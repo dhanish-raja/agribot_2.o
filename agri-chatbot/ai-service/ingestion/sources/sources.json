@@ -1,0 +1,128 @@
+[
+  {
+    "crop": "mango",
+    "organization": "ICAR",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "cultivation",
+    "url": "https://mango-crop.web.app/",
+    "description": "Mango Crop Management System"
+  },
+  {
+    "crop": "mango",
+    "organization": "TNAU",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "cultivation",
+    "url": "https://agritech.tnau.ac.in/horticulture/horti_fruits_mango.html",
+    "description": "TNAU Mango"
+  },
+  {
+    "crop": "coconut",
+    "organization": "ICAR-CPCRI",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "practices",
+    "url": "https://cpcri.gov.in/page/farmers_corner_package_practices",
+    "description": "Package of Practices"
+  },
+  {
+    "crop": "sugarcane",
+    "organization": "TNAU",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "cultivation",
+    "url": "https://agritech.tnau.ac.in/agriculture/sugarcrops_sugarcane.html",
+    "description": "TNAU Sugarcane"
+  },
+  {
+    "crop": "tobacco",
+    "organization": "ICAR-NIRCA",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "soils-climate",
+    "url": "https://nirca.icar.gov.in/farmers.php?page=soils-climate",
+    "description": "Soils and Climate"
+  },
+  {
+    "crop": "tobacco",
+    "organization": "ICAR-NIRCA",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "diseases",
+    "url": "https://nirca.icar.gov.in/farmers.php?page=diseases",
+    "description": "Disease Management"
+  },
+  {
+    "crop": "tobacco",
+    "organization": "ICAR-NIRCA",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "insects",
+    "url": "https://nirca.icar.gov.in/farmers.php?page=insects",
+    "description": "Insect Management"
+  },
+  {
+    "crop": "tobacco",
+    "organization": "ICAR-NIRCA",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "curing",
+    "url": "https://nirca.icar.gov.in/farmers.php?page=curing",
+    "description": "Curing"
+  },
+  {
+    "crop": "tobacco",
+    "organization": "ICAR-NIRCA",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "economy",
+    "url": "https://nirca.icar.gov.in/farmers.php?page=economy",
+    "description": "Economy"
+  },
+  {
+    "crop": "rice",
+    "organization": "TNAU",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "diseases",
+    "url": "https://agritech.tnau.ac.in/crop_protection/crop_prot_crop_diseases_cereals_rice_main.html",
+    "description": "Rice Disease Database"
+  },
+  {
+    "crop": "rice",
+    "organization": "IRRI",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "diseases",
+    "url": "https://rice-diseases.irri.org/contents",
+    "description": "IRRI Rice Diseases"
+  },
+  {
+    "crop": "rice",
+    "organization": "ICAR-IIRR",
+    "source_type": "web",
+    "priority": "primary",
+    "category": "databases",
+    "url": "https://www.icar-iirr.org/index.php/en/services/databases",
+    "description": "ICAR-IIRR Databases"
+  },
+  {
+    "crop": "all",
+    "organization": "CABI",
+    "source_type": "web",
+    "priority": "secondary",
+    "category": "knowledge_bank",
+    "url": "https://plantwiseplusknowledgebank.org/",
+    "description": "PlantwisePlus Knowledge Bank"
+  },
+  {
+    "crop": "all",
+    "organization": "GOI",
+    "source_type": "web",
+    "priority": "secondary",
+    "category": "statistics",
+    "url": "https://www.data.gov.in/catalog/district-wise-season-wise-crop-production-statistics-0",
+    "description": "Crop Statistics"
+  }
+]
