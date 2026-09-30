@@ -42,8 +42,11 @@ class LLMExtractor:
             self._configure_current_key()
             return True
         else:
-            print(f"[LLMExtractor] ALERT: ALL {len(self.api_keys)} API keys have been exhausted!")
-            return False
+            print(f"[LLMExtractor] ALERT: ALL {len(self.api_keys)} API keys hit rate limits! Waiting 30s for per-minute quota reset...")
+            time.sleep(30)
+            self.current_key_idx = 0
+            self._configure_current_key()
+            return True
 
     def extract(self, segment, meta):
         if not self.model:

@@ -4,6 +4,12 @@ import json
 import os
 import time
 import hashlib
+
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 from crawler.crawl_service import CrawlerService
 from ingestion.cleaner import ContentCleaner
 from ingestion.segmenter import DocumentSegmenter
@@ -116,8 +122,6 @@ def main():
                 
             clean_text = cleaner.clean(raw_doc)
             segments = segmenter.segment(clean_text)
-            if len(segments) > 4:
-                segments = segments[:4]
             
             proc_dir = os.path.join(base_dir, "data", "processed", crop)
             os.makedirs(proc_dir, exist_ok=True)
