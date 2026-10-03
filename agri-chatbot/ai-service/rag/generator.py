@@ -42,17 +42,37 @@ class GeminiGenerator:
         key = self.api_keys[key_idx]
         genai.configure(api_key=key)
 
+    RELEVANCE_THRESHOLD = 0.65  # Strict threshold matching Slide 6 Reliability Controls
+
     def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None) -> dict:
         """
         Given the farmer query and retrieved vector context chunks, generate a grounded answer.
+        Applies strict relevance threshold cutoff matching Slide 6 reliability controls.
         """
-        if not context_chunks:
+        top_score = context_chunks[0].get("score", 0.0) if context_chunks else 0.0
+
+        if not context_chunks or top_score < self.RELEVANCE_THRESHOLD:
+            crop_label = f" for {crop.capitalize()}" if crop else ""
             return {
-                "answer": "No verified agricultural records were found matching your query. Please check crop name or rephrase your question.",
+                "answer": (
+                    f"I could not find sufficiently reliable information in trusted agricultural sources{crop_label} to answer this question. "
+                    "To prevent crop damage from unverified advice, please consult your local Krishi Vigyan Kendra (KVK) officer or an agricultural extension specialist."
+                ),
                 "crop": crop,
                 "confidence": "Low",
-                "sources": [],
-                "suggested_questions": []
+                "sources": [
+                    {
+                        "crop": hit.get("payload", {}).get("crop", "General"),
+                        "topic": hit.get("payload", {}).get("topic", "General"),
+                        "source": hit.get("payload", {}).get("source_file", "Knowledge Base"),
+                        "similarity_score": round(float(hit.get("score", 0.0)), 4)
+                    } for hit in (context_chunks[:2] if context_chunks else [])
+                ],
+                "suggested_questions": [
+                    "What are the 5 major crops supported by AgriBot?",
+                    "How to manage major diseases in Rice?",
+                    "What is the fertilizer schedule for Coconut?"
+                ]
             }
 
         # Build context prompt
