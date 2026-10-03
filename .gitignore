@@ -72,8 +72,8 @@ agri-chatbot/data/backups/
 data/backups/
 agri-chatbot/data/recovered/
 data/recovered/
-agri-chatbot/data/qdrant_storage/
-data/qdrant_storage/
+*.lock
+agri-chatbot/data/qdrant_storage/.lock
 
 # Scratch & temporary migration scripts in root
 test_sample_gemini.py
