@@ -1,303 +1,428 @@
-import { useState, useEffect, useRef } from "react"
-import "./App.css"
+import { useState, useEffect, useRef } from "react";
+import "./App.css";
+import { 
+  ChatSession, 
+  Message, 
+  User as UserType 
+} from "./types";
+import { 
+  loadSessions, 
+  saveSessions, 
+  createDefaultSession, 
+  loadActiveSessionId, 
+  saveActiveSessionId, 
+  loadUser, 
+  saveUser, 
+  loadTheme, 
+  saveTheme 
+} from "./storage";
+import { Sidebar } from "./components/Sidebar";
+import { Header } from "./components/Header";
+import { ChatMessage } from "./components/ChatMessage";
+import { ChatComposer } from "./components/ChatComposer";
+import { WelcomeHero } from "./components/WelcomeHero";
+import { AuthModal } from "./components/AuthModal";
 
-interface SourceItem {
-  crop?: string;
-  topic?: string;
-  similarity_score?: number;
-  source?: string;
-}
-
-interface Message {
-  text: string;
-  sender: "user" | "assistant";
-  crop?: string;
-  sources?: (SourceItem | string)[];
-  suggestedQuestions?: string[];
-  confidence?: string;
-}
-
-const CROPS = [
-  { id: "", label: "🌱 All Crops", emoji: "🌱" },
-  { id: "mango", label: "🥭 Mango", emoji: "🥭" },
-  { id: "coconut", label: "🥥 Coconut", emoji: "🥥" },
-  { id: "sugarcane", label: "🎋 Sugarcane", emoji: "🎋" },
-  { id: "tobacco", label: "🍂 Tobacco", emoji: "🍂" },
-  { id: "rice", label: "🌾 Rice", emoji: "🌾" }
-];
-
-function formatMarkdown(text: string) {
-  // Convert markdown-like headers, bold, and bullet points into styled elements
-  const lines = text.split("\n");
-  return lines.map((line, idx) => {
-    let trimmed = line.trim();
-    if (!trimmed) return <div key={idx} className="line-break" />;
-
-    // Headers
-    if (trimmed.startsWith("### ")) {
-      return <h4 key={idx} className="msg-h4">{trimmed.replace("### ", "")}</h4>;
-    }
-    if (trimmed.startsWith("## ")) {
-      return <h3 key={idx} className="msg-h3">{trimmed.replace("## ", "")}</h3>;
-    }
-    if (trimmed.startsWith("# ")) {
-      return <h2 key={idx} className="msg-h2">{trimmed.replace("# ", "")}</h2>;
-    }
-
-    // Bullet points
-    if (trimmed.startsWith("* ") || trimmed.startsWith("- ")) {
-      const content = trimmed.substring(2);
-      return (
-        <li key={idx} className="msg-bullet" dangerouslySetInnerHTML={{ __html: renderInline(content) }} />
-      );
-    }
-
-    // Numbered list
-    const numMatch = trimmed.match(/^(\d+)\.\s+(.*)/);
-    if (numMatch) {
-      return (
-        <div key={idx} className="msg-num-item">
-          <strong>{numMatch[1]}.</strong> <span dangerouslySetInnerHTML={{ __html: renderInline(numMatch[2]) }} />
-        </div>
-      );
-    }
-
-    return (
-      <p key={idx} className="msg-p" dangerouslySetInnerHTML={{ __html: renderInline(trimmed) }} />
-    );
+export default function App() {
+  // Persistence state
+  const [sessions, setSessions] = useState<ChatSession[]>(loadSessions);
+  const [activeSessionId, setActiveSessionId] = useState<string>(() => {
+    const saved = loadActiveSessionId();
+    const existing = sessions.find(s => s.id === saved);
+    return existing ? existing.id : sessions[0].id;
   });
-}
+  const [user, setUser] = useState<UserType>(loadUser);
+  const [theme, setTheme] = useState<"dark" | "light">(loadTheme);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
 
-function renderInline(str: string): string {
-  // Parse **bold** and *italic*
-  return str
-    .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.*?)\*/g, "<em>$1</em>");
-}
-
-function App() {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      text: "Hello farmer! I am your AgriBot AI Assistant, powered by verified RAG knowledge bases for Mango, Coconut, Sugarcane, Tobacco, and Rice. How can I help your crop today?",
-      sender: "assistant",
-      suggestedQuestions: [
-        "How to control bacterial blight in rice?",
-        "What is the fertilizer schedule for coconut trees?",
-        "How to manage red rot disease in sugarcane?",
-        "What are the control measures for mango fruit fly?"
-      ]
-    }
-  ]);
-  const [input, setInput] = useState("");
-  const [selectedCrop, setSelectedCrop] = useState<string>("");
+  // Runtime state
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeBackend, setActiveBackend] = useState<string>("Checking...");
+  const [activeBackend, setActiveBackend] = useState<string>("Connecting...");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages, loading]);
 
   const AI_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || "http://localhost:8000";
 
+  // Active Session helper
+  const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
+  const selectedCrop = activeSession?.cropFilter || "";
+
+  // Apply theme to document element
   useEffect(() => {
-    // Health check check both backend (8080) and AI service
-    fetch("http://localhost:8080/api/health")
-      .then(res => {
-        if (res.ok) setActiveBackend("Spring Boot Gateway (:8080)");
-        else throw new Error();
-      })
-      .catch(() => {
-        fetch(`${AI_BASE_URL}/health`)
-          .then(res => {
-            if (res.ok) setActiveBackend("FastAPI AI Cloud Engine");
-            else setActiveBackend("Offline");
-          })
-          .catch(() => setActiveBackend("AI Engine / Gateway Offline"));
-      });
+    document.documentElement.setAttribute("data-theme", theme);
+    saveTheme(theme);
+  }, [theme]);
+
+  // Persist sessions whenever they change
+  useEffect(() => {
+    saveSessions(sessions);
+  }, [sessions]);
+
+  // Persist active session ID
+  useEffect(() => {
+    saveActiveSessionId(activeSessionId);
+  }, [activeSessionId]);
+
+  // Auto-scroll to bottom of message list
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [activeSession?.messages, loading]);
+
+  // Backend Health Check
+  useEffect(() => {
+    let isMounted = true;
+    const checkHealth = async () => {
+      // 1. Try local Spring Boot Gateway first
+      try {
+        const res = await fetch("http://localhost:8080/api/health");
+        if (res.ok && isMounted) {
+          setActiveBackend("Spring Boot Gateway (:8080)");
+          return;
+        }
+      } catch {}
+
+      // 2. Try FastAPI Cloud AI Engine
+      try {
+        const res = await fetch(`${AI_BASE_URL}/health`);
+        if (res.ok && isMounted) {
+          const data = await res.json();
+          const count = data.total_vectors || 1515;
+          setActiveBackend(`AI Engine Online (${count} vectors)`);
+          return;
+        }
+      } catch {}
+
+      if (isMounted) setActiveBackend("AI Engine / Gateway Offline");
+    };
+
+    checkHealth();
+    const interval = setInterval(checkHealth, 30000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
   }, [AI_BASE_URL]);
 
-  const sendMessage = async (textToSend?: string) => {
-    const query = (textToSend || input).trim();
-    if (!query) return;
+  // Toggle Theme
+  const handleToggleTheme = () => {
+    setTheme(prev => (prev === "dark" ? "light" : "dark"));
+  };
 
-    setMessages(prev => [...prev, { text: query, sender: "user", crop: selectedCrop }]);
-    if (!textToSend) setInput("");
+  // User Profile
+  const handleSaveUser = (updatedUser: UserType) => {
+    setUser(updatedUser);
+    saveUser(updatedUser);
+  };
+
+  // Crop Filter Selection
+  const handleSelectCrop = (cropId: string) => {
+    setSessions(prev =>
+      prev.map(s => (s.id === activeSessionId ? { ...s, cropFilter: cropId } : s))
+    );
+  };
+
+  // Session Handlers
+  const handleNewSession = () => {
+    const newSession = createDefaultSession();
+    setSessions(prev => [newSession, ...prev]);
+    setActiveSessionId(newSession.id);
+  };
+
+  const handleDeleteSession = (id: string) => {
+    if (sessions.length <= 1) return;
+    const filtered = sessions.filter(s => s.id !== id);
+    setSessions(filtered);
+    if (activeSessionId === id) {
+      setActiveSessionId(filtered[0].id);
+    }
+  };
+
+  const handleRenameSession = (id: string, newTitle: string) => {
+    setSessions(prev =>
+      prev.map(s => (s.id === id ? { ...s, title: newTitle, updatedAt: Date.now() } : s))
+    );
+  };
+
+  const handleClearChat = () => {
+    if (!confirm("Are you sure you want to clear this conversation?")) return;
+    setSessions(prev =>
+      prev.map(s => {
+        if (s.id === activeSessionId) {
+          return {
+            ...s,
+            messages: [
+              {
+                id: `msg_welcome_${Date.now()}`,
+                text: "Conversation cleared. How can I help with your crops now?",
+                sender: "assistant",
+                timestamp: Date.now(),
+                suggestedQuestions: [
+                  "What are the 5 major crops supported by AgriBot?",
+                  "How to manage blast disease in Rice?",
+                  "What is the fertilizer schedule for Coconut?"
+                ]
+              }
+            ],
+            updatedAt: Date.now()
+          };
+        }
+        return s;
+      })
+    );
+  };
+
+  // Export Conversation as Markdown
+  const handleExportChat = () => {
+    if (!activeSession) return;
+    const dateStr = new Date(activeSession.createdAt).toLocaleDateString();
+    let md = `# AgriBot 2.0 Advisory Transcript\n\n`;
+    md += `**Date:** ${dateStr}\n`;
+    md += `**Farmer / User:** ${user.name} (${user.role})\n`;
+    md += `**Farm Location:** ${user.farmLocation}\n`;
+    md += `**Topic:** ${activeSession.title}\n`;
+    md += `**Crop Focus:** ${activeSession.cropFilter || "All Supported Crops"}\n\n`;
+    md += `---\n\n`;
+
+    activeSession.messages.forEach(m => {
+      const time = new Date(m.timestamp).toLocaleTimeString();
+      if (m.sender === "user") {
+        md += `### 🧑‍🌾 Farmer (${time})\n${m.text}\n\n`;
+      } else {
+        md += `### 🤖 AgriBot Advisory (${time})\n${m.text}\n\n`;
+        if (m.sources && m.sources.length > 0) {
+          md += `*Sources & Citations:*\n`;
+          m.sources.forEach(src => {
+            if (typeof src === "string") md += `- ${src}\n`;
+            else md += `- **${src.crop || "General"}**: ${src.topic} (${src.source})\n`;
+          });
+          md += `\n`;
+        }
+      }
+    });
+
+    const blob = new Blob([md], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `AgriBot_${activeSession.title.replace(/\s+/g, "_")}_${Date.now()}.md`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  // Message Feedback (Thumbs Up / Down)
+  const handleMessageFeedback = (messageId: string, feedback: "up" | "down") => {
+    setSessions(prev =>
+      prev.map(s => {
+        if (s.id !== activeSessionId) return s;
+        return {
+          ...s,
+          messages: s.messages.map(m =>
+            m.id === messageId ? { ...m, feedback: m.feedback === feedback ? null : feedback } : m
+          )
+        };
+      })
+    );
+  };
+
+  // Send Message Logic
+  const handleSendMessage = async (textToSend: string, imageBase64?: string) => {
+    const query = textToSend.trim();
+    if (!query && !imageBase64) return;
+
+    const userMsgId = `msg_user_${Date.now()}`;
+    const userMessage: Message = {
+      id: userMsgId,
+      text: query,
+      sender: "user",
+      timestamp: Date.now(),
+      crop: selectedCrop,
+      imageUrl: imageBase64
+    };
+
+    // Auto-update session title if it's the default title
+    const isFirstQuestion = activeSession.messages.length <= 1;
+    const newTitle = isFirstQuestion ? query.slice(0, 32) + (query.length > 32 ? "..." : "") : activeSession.title;
+
+    // Append user message immediately
+    setSessions(prev =>
+      prev.map(s => {
+        if (s.id !== activeSessionId) return s;
+        return {
+          ...s,
+          title: newTitle,
+          updatedAt: Date.now(),
+          messages: [...s.messages, userMessage]
+        };
+      })
+    );
+
     setLoading(true);
-    setError(null);
 
     const payload = {
       message: query,
       query: query,
       crop: selectedCrop || undefined,
-      sessionId: "farmer-session-1"
+      sessionId: activeSessionId
     };
 
     try {
       let data: any = null;
-      // Try Spring Boot gateway first if running locally
+
+      // 1. Try Spring Boot Gateway (:8080)
       try {
-        const res = await fetch("http://localhost:8080/api/chat", {
+        const springRes = await fetch("http://localhost:8080/api/chat", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        if (res.ok) {
-          data = await res.json();
+        if (springRes.ok) {
+          data = await springRes.json();
           setActiveBackend("Spring Boot Gateway (:8080)");
         }
-      } catch (err) {
-        // Fallback directly to FastAPI AI service
-      }
+      } catch {}
 
+      // 2. Direct FastAPI AI Cloud Service
       if (!data) {
         const aiRes = await fetch(`${AI_BASE_URL}/rag/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
-        if (!aiRes.ok) throw new Error(`AI service returned HTTP ${aiRes.status}`);
+        if (!aiRes.ok) throw new Error(`AI service responded with HTTP ${aiRes.status}`);
         data = await aiRes.json();
-        setActiveBackend("FastAPI AI Cloud Engine");
       }
 
-      setMessages(prev => [
-        ...prev,
-        {
-          text: data.answer || "No response received.",
-          sender: "assistant",
-          crop: data.crop || selectedCrop,
-          confidence: data.confidence,
-          sources: data.sources || [],
-          suggestedQuestions: data.suggested_questions || data.suggestedQuestions || []
-        }
-      ]);
+      const botMessage: Message = {
+        id: `msg_bot_${Date.now()}`,
+        text: data.answer || "No response received.",
+        sender: "assistant",
+        timestamp: Date.now(),
+        crop: data.crop || selectedCrop,
+        confidence: data.confidence || "Medium",
+        sources: data.sources || [],
+        suggestedQuestions: data.suggested_questions || data.suggestedQuestions || []
+      };
+
+      setSessions(prev =>
+        prev.map(s => {
+          if (s.id !== activeSessionId) return s;
+          return {
+            ...s,
+            updatedAt: Date.now(),
+            messages: [...s.messages, botMessage]
+          };
+        })
+      );
     } catch (err: any) {
-      setError(err.message || "Failed to reach AI service. Please ensure FastAPI or Spring Boot is running.");
+      const errorMsg: Message = {
+        id: `msg_err_${Date.now()}`,
+        text: `⚠️ **Connection Error**: Unable to reach AI cloud engine (${err.message}). Please ensure your network is active or backend services are up.`,
+        sender: "assistant",
+        timestamp: Date.now(),
+        confidence: "Low"
+      };
+      setSessions(prev =>
+        prev.map(s => (s.id === activeSessionId ? { ...s, messages: [...s.messages, errorMsg] } : s))
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const showWelcomeHero = activeSession.messages.length <= 1;
+
   return (
-    <div className="chat-container">
-      {/* Header */}
-      <header className="chat-header">
-        <div className="header-title">
-          <h1>🌾 AgriBot 2.0 Assistant</h1>
-          <span className="backend-badge">● {activeBackend}</span>
-        </div>
-        <p className="header-subtitle">
-          Grounded Agronomy & Pest Diagnostics for 5 Major Crops
-        </p>
+    <div className={`app-layout ${isSidebarCollapsed ? "sidebar-collapsed" : ""}`}>
+      {/* Sidebar */}
+      <Sidebar
+        sessions={sessions}
+        activeSessionId={activeSessionId}
+        onSelectSession={id => setActiveSessionId(id)}
+        onNewSession={handleNewSession}
+        onDeleteSession={handleDeleteSession}
+        onRenameSession={handleRenameSession}
+        user={user}
+        onOpenAuth={() => setIsAuthModalOpen(true)}
+        isCollapsed={isSidebarCollapsed}
+        onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+      />
 
-        {/* Crop Selector Bar */}
-        <div className="crop-selector">
-          {CROPS.map(c => (
-            <button
-              key={c.id}
-              className={`crop-pill ${selectedCrop === c.id ? "active" : ""}`}
-              onClick={() => setSelectedCrop(c.id)}
-            >
-              {c.label}
-            </button>
-          ))}
-        </div>
-      </header>
+      {/* Main Chat Workspace */}
+      <main className="main-content">
+        <Header
+          onToggleSidebar={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+          title={activeSession.title}
+          selectedCrop={selectedCrop}
+          onSelectCrop={handleSelectCrop}
+          theme={theme}
+          onToggleTheme={handleToggleTheme}
+          backendStatus={activeBackend}
+          onExportChat={handleExportChat}
+          onClearChat={handleClearChat}
+          user={user}
+          onOpenAuth={() => setIsAuthModalOpen(true)}
+        />
 
-      {/* Messages */}
-      <div className="chat-messages">
-        {messages.map((msg, idx) => (
-          <div key={idx} className={`message-wrapper ${msg.sender}`}>
-            <div className={`message ${msg.sender}`}>
-              {msg.sender === "assistant" && (
-                <div className="msg-meta-header">
-                  <span className="bot-tag">AgriBot RAG</span>
-                  {msg.crop && <span className="crop-tag">{msg.crop.toUpperCase()}</span>}
-                  {msg.confidence && (
-                    <span className={`confidence-tag ${msg.confidence.toLowerCase()}`}>
-                      {msg.confidence} Confidence
-                    </span>
-                  )}
-                </div>
-              )}
+        {/* Scrollable Conversation Area */}
+        <div className="chat-messages-area">
+          {showWelcomeHero ? (
+            <WelcomeHero
+              user={user}
+              onSelectPrompt={(prompt, crop) => {
+                if (crop) handleSelectCrop(crop);
+                handleSendMessage(prompt);
+              }}
+            />
+          ) : (
+            <div className="messages-stream">
+              {activeSession.messages.map(msg => (
+                <ChatMessage
+                  key={msg.id}
+                  message={msg}
+                  onSelectSuggestedQuestion={q => handleSendMessage(q)}
+                  onFeedback={handleMessageFeedback}
+                />
+              ))}
 
-              <div className="msg-body">
-                {formatMarkdown(msg.text)}
-              </div>
-
-              {/* Verified Sources / Citations */}
-              {msg.sources && msg.sources.length > 0 && (
-                <div className="sources-container">
-                  <div className="sources-label">📚 Verified Citations:</div>
-                  <div className="sources-list">
-                    {msg.sources.map((s: any, sIdx: number) => {
-                      const label = typeof s === "string" 
-                        ? s 
-                        : `${s.crop ? s.crop.toUpperCase() : "Crop"} | ${s.topic || "Agronomy"} (Match: ${(s.similarity_score * 100).toFixed(1)}%)`;
-                      return (
-                        <span key={sIdx} className="source-chip" title={s.source || "Knowledge Base"}>
-                          {label}
-                        </span>
-                      );
-                    })}
+              {loading && (
+                <div className="message-row assistant">
+                  <div className="message-container">
+                    <div className="message-avatar bot-avatar pulsing">
+                      🌾
+                    </div>
+                    <div className="message-bubble typing-bubble">
+                      <div className="typing-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                      </div>
+                      <span className="typing-label">Consulting ICAR knowledge base & synthesizing advisory...</span>
+                    </div>
                   </div>
                 </div>
               )}
+              <div ref={messagesEndRef} />
             </div>
+          )}
+        </div>
 
-            {/* Suggested Follow-up Questions */}
-            {msg.suggestedQuestions && msg.suggestedQuestions.length > 0 && (
-              <div className="suggested-questions">
-                <span className="suggested-title">💡 Suggested questions:</span>
-                <div className="suggested-chips">
-                  {msg.suggestedQuestions.map((q, qIdx) => (
-                    <button
-                      key={qIdx}
-                      className="suggested-chip"
-                      onClick={() => sendMessage(q)}
-                      disabled={loading}
-                    >
-                      {q}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-        ))}
+        {/* Floating Chat Composer */}
+        <div className="composer-footer-container">
+          <ChatComposer
+            onSendMessage={handleSendMessage}
+            loading={loading}
+            selectedCrop={selectedCrop}
+          />
+        </div>
+      </main>
 
-        {loading && (
-          <div className="message assistant loading-bubble">
-            <span className="dot-pulse">● ● ●</span> Consulting verified agricultural vector database...
-          </div>
-        )}
-
-        {error && <div className="error-message">⚠️ {error}</div>}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* Input Area */}
-      <div className="chat-input-area">
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && !loading && sendMessage()}
-          placeholder={
-            selectedCrop 
-              ? `Ask a question about ${selectedCrop.toUpperCase()}...` 
-              : "Ask about Mango, Coconut, Sugarcane, Tobacco, or Rice..."
-          }
-          disabled={loading}
-        />
-        <button onClick={() => sendMessage()} disabled={loading || !input.trim()}>
-          Send Query
-        </button>
-      </div>
+      {/* Enterprise Farmer Profile / Auth Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={user}
+        onSaveUser={handleSaveUser}
+      />
     </div>
-  )
+  );
 }
-
-export default App
