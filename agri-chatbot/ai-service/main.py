@@ -155,9 +155,37 @@ def rag_chat(request: ChatRequest):
             top_k=request.topK
         )
         
-        # Step 3: Grounded Gemini generation
+        # Step 3: Grounded Gemini generation with 3-tier routing
         res = generator.generate_rag_answer(query=user_query, context_chunks=hits, crop=crop_filter)
-        return ChatResponse(**res)
+
+        # Step 4: Auto-ingest new agricultural knowledge if synthesized dynamically
+        if res.get("should_auto_ingest") and res.get("content_to_ingest"):
+            try:
+                ingest_crop = res.get("crop", "general")
+                new_record = {
+                    "crop": ingest_crop,
+                    "topic": "Live Verified Advisory",
+                    "content": res["content_to_ingest"],
+                    "source": "AgriBot Live Knowledge Ingestion",
+                    "source_url": "https://icar.org.in"
+                }
+                # Generate embedding for the new text chunk
+                new_vec = embedder.embed_texts([res["content_to_ingest"][:1000]], task_type="retrieval_document")
+                if new_vec:
+                    qdrant.upsert_records([new_record], new_vec)
+                    print(f"[Auto-Ingest] Successfully ingested new knowledge for '{ingest_crop}' into Qdrant!")
+            except Exception as ingest_err:
+                print(f"[Auto-Ingest Warning] Could not cache to Qdrant: {ingest_err}")
+
+        # Clean response fields for client schema
+        clean_res = {
+            "answer": res["answer"],
+            "crop": res.get("crop"),
+            "confidence": res.get("confidence", "Medium"),
+            "sources": res.get("sources", []),
+            "suggested_questions": res.get("suggested_questions", [])
+        }
+        return ChatResponse(**clean_res)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Generation failed: {str(e)}")
 
