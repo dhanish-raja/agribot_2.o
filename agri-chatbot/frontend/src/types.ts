@@ -27,6 +27,8 @@ export interface Message {
   confidence?: "High" | "Medium" | "Low" | string;
   imageUrl?: string;
   feedback?: "up" | "down" | null;
+  audioBase64?: string;
+  detectedLanguage?: string;
 }
 
 export interface ChatSession {

@@ -24,7 +24,12 @@ export const ChatComposer = ({
   const [isListening, setIsListening] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const recognitionRef = useRef<any>(null);
+
+  const AI_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || "https://agribot-2-o.onrender.com";
+  const [isProcessingAudio, setIsProcessingAudio] = useState(false);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const audioChunksRef = useRef<Blob[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   // Auto-resize textarea
   useEffect(() => {
@@ -34,42 +39,84 @@ export const ChatComposer = ({
     }
   }, [input]);
 
-  // Voice-to-Text initialization
-  useEffect(() => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (SpeechRecognition) {
-      const recognition = new SpeechRecognition();
-      recognition.continuous = false;
-      recognition.interimResults = false;
-      recognition.lang = "en-IN"; // Default to Indian English
-
-      recognition.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
-        setIsListening(false);
-      };
-
-      recognition.onerror = () => setIsListening(false);
-      recognition.onend = () => setIsListening(false);
-      recognitionRef.current = recognition;
-    }
-  }, []);
-
-  const toggleListening = () => {
-    if (!recognitionRef.current) {
-      alert("Voice speech recognition is not supported in this browser.");
+  const toggleListening = async () => {
+    // If currently listening, stop recording and send to Sarvam AI STT
+    if (isListening) {
+      if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+        mediaRecorderRef.current.stop();
+      }
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      setIsListening(false);
       return;
     }
 
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
-    } else {
-      try {
-        recognitionRef.current.start();
+    // Start recording audio for Sarvam AI
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      audioChunksRef.current = [];
+
+      const mediaRecorder = new MediaRecorder(stream);
+      mediaRecorderRef.current = mediaRecorder;
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunksRef.current, { type: "audio/wav" });
+        if (audioBlob.size > 1000) {
+          setIsProcessingAudio(true);
+          try {
+            const formData = new FormData();
+            formData.append("file", audioBlob, "recording.wav");
+            formData.append("model", "saaras:v3");
+
+            const res = await fetch(`${AI_BASE_URL}/speech/stt`, {
+              method: "POST",
+              body: formData
+            });
+
+            if (res.ok) {
+              const data = await res.json();
+              const spokenText = data.transcript || data.english_query;
+              if (spokenText) {
+                setInput(prev => (prev ? `${prev} ${spokenText}` : spokenText));
+              }
+            }
+          } catch (err) {
+            console.error("Sarvam STT error:", err);
+          } finally {
+            setIsProcessingAudio(false);
+          }
+        }
+      };
+
+      mediaRecorder.start();
+      setIsListening(true);
+    } catch (err) {
+      // Fallback to browser Web Speech API if microphone access denied or unsupported
+      const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        const recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = "en-IN";
+        recognition.onresult = (event: any) => {
+          const transcript = event.results[0][0].transcript;
+          setInput(prev => (prev ? `${prev} ${transcript}` : transcript));
+          setIsListening(false);
+        };
+        recognition.onerror = () => setIsListening(false);
+        recognition.onend = () => setIsListening(false);
+        recognition.start();
         setIsListening(true);
-      } catch (err) {
-        setIsListening(false);
+      } else {
+        alert("Microphone recording is not available. Please allow microphone permissions.");
       }
     }
   };
@@ -172,12 +219,24 @@ export const ChatComposer = ({
           {/* Voice Input Button */}
           <button
             type="button"
-            className={`tool-btn ${isListening ? "listening" : ""}`}
+            className={`tool-btn ${isListening ? "listening" : ""} ${isProcessingAudio ? "processing" : ""}`}
             onClick={toggleListening}
-            title={isListening ? "Listening... click to stop" : "Voice input (Speak your question)"}
-            disabled={loading}
+            title={
+              isProcessingAudio 
+                ? "Transcribing voice via Sarvam AI..." 
+                : isListening 
+                ? "Recording voice... click to stop and transcribe" 
+                : "Voice input via Sarvam AI (Speak in Hindi, Telugu, Tamil, English, etc.)"
+            }
+            disabled={loading || isProcessingAudio}
           >
-            {isListening ? <MicOff size={19} /> : <Mic size={19} />}
+            {isProcessingAudio ? (
+              <Loader2 size={19} className="spinner" />
+            ) : isListening ? (
+              <MicOff size={19} />
+            ) : (
+              <Mic size={19} />
+            )}
           </button>
 
           {/* Send Button */}

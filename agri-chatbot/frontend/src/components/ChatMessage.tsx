@@ -1,18 +1,19 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { 
   Copy, 
   Check, 
   Volume2, 
   VolumeX, 
+  Loader2,
   ThumbsUp, 
   ThumbsDown, 
   ChevronDown, 
   ChevronUp, 
   ShieldCheck, 
   FileText, 
-  Sparkles,
-  Bot,
-  User as UserIcon
+  Sparkles, 
+  Bot, 
+  User as UserIcon 
 } from "lucide-react";
 import { Message, SourceItem } from "../types";
 
@@ -29,8 +30,11 @@ export const ChatMessage = ({
 }: ChatMessageProps) => {
   const [copied, setCopied] = useState(false);
   const [isPlayingAudio, setIsPlayingAudio] = useState(false);
+  const [isLoadingAudio, setIsLoadingAudio] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const audioInstanceRef = useRef<HTMLAudioElement | null>(null);
 
+  const AI_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || "https://agribot-2-o.onrender.com";
   const isAssistant = message.sender === "assistant";
 
   // Copy message text
@@ -40,31 +44,75 @@ export const ChatMessage = ({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Text-to-Speech (Farmer Audio Assist)
-  const handleSpeak = () => {
-    if (!("speechSynthesis" in window)) {
-      alert("Text-to-speech is not supported in this browser.");
-      return;
-    }
-
+  // Sarvam AI Text-to-Speech (Indian Regional Voice)
+  const handleSpeak = async () => {
+    // If currently playing, stop audio
     if (isPlayingAudio) {
-      window.speechSynthesis.cancel();
+      if (audioInstanceRef.current) {
+        audioInstanceRef.current.pause();
+        audioInstanceRef.current.currentTime = 0;
+      }
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
       setIsPlayingAudio(false);
       return;
     }
 
-    // Clean markdown before speaking
-    const cleanText = message.text
-      .replace(/[*#_`>-]/g, "")
-      .replace(/\n+/g, ". ");
+    // 1. If audio base64 is already cached on the message, play directly
+    if (message.audioBase64) {
+      playBase64Audio(message.audioBase64);
+      return;
+    }
 
-    const utterance = new SpeechSynthesisUtterance(cleanText);
-    utterance.rate = 0.95; // comfortable listening pace
-    utterance.onend = () => setIsPlayingAudio(false);
-    utterance.onerror = () => setIsPlayingAudio(false);
+    // 2. Fetch Sarvam AI TTS audio from backend
+    setIsLoadingAudio(true);
+    try {
+      const res = await fetch(`${AI_BASE_URL}/speech/tts`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: message.text,
+          language_code: message.detectedLanguage || "en-IN",
+          speaker: "kavya"
+        })
+      });
 
-    window.speechSynthesis.speak(utterance);
-    setIsPlayingAudio(true);
+      if (res.ok) {
+        const data = await res.json();
+        if (data.audio_base64) {
+          playBase64Audio(data.audio_base64);
+          setIsLoadingAudio(false);
+          return;
+        }
+      }
+      throw new Error("Sarvam TTS unavailable");
+    } catch (err) {
+      setIsLoadingAudio(false);
+      // Fallback to browser Web Speech API
+      if ("speechSynthesis" in window) {
+        const cleanText = message.text.replace(/[*#_`>-]/g, "").replace(/\n+/g, ". ");
+        const utterance = new SpeechSynthesisUtterance(cleanText);
+        utterance.rate = 0.95;
+        utterance.onend = () => setIsPlayingAudio(false);
+        utterance.onerror = () => setIsPlayingAudio(false);
+        window.speechSynthesis.speak(utterance);
+        setIsPlayingAudio(true);
+      }
+    }
+  };
+
+  const playBase64Audio = (b64: string) => {
+    try {
+      const audio = new Audio(`data:audio/wav;base64,${b64}`);
+      audioInstanceRef.current = audio;
+      audio.onended = () => setIsPlayingAudio(false);
+      audio.onerror = () => setIsPlayingAudio(false);
+      audio.play();
+      setIsPlayingAudio(true);
+    } catch {
+      setIsPlayingAudio(false);
+    }
   };
 
   // Format markdown content
@@ -249,10 +297,19 @@ export const ChatMessage = ({
               <button 
                 className={`action-icon-btn ${isPlayingAudio ? "playing" : ""}`} 
                 onClick={handleSpeak} 
-                title={isPlayingAudio ? "Stop reading" : "Read advisory aloud"}
+                disabled={isLoadingAudio}
+                title={isPlayingAudio ? "Stop audio" : "Listen via Sarvam AI Indian Voice"}
               >
-                {isPlayingAudio ? <VolumeX size={14} /> : <Volume2 size={14} />}
-                <span className="action-label">{isPlayingAudio ? "Stop" : "Listen"}</span>
+                {isLoadingAudio ? (
+                  <Loader2 size={14} className="spinner" />
+                ) : isPlayingAudio ? (
+                  <VolumeX size={14} />
+                ) : (
+                  <Volume2 size={14} />
+                )}
+                <span className="action-label">
+                  {isLoadingAudio ? "Loading Voice..." : isPlayingAudio ? "Stop" : "Listen (Sarvam AI)"}
+                </span>
               </button>
 
               <div className="feedback-group">

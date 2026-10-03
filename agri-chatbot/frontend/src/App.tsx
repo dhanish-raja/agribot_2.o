@@ -270,11 +270,24 @@ export default function App() {
 
     setLoading(true);
 
+    // Map user language to Sarvam AI language code
+    const langCodeMap: Record<string, string> = {
+      "Telugu": "te-IN",
+      "Hindi": "hi-IN",
+      "Tamil": "ta-IN",
+      "Kannada": "kn-IN",
+      "Marathi": "mr-IN",
+      "English": "en-IN"
+    };
+    const preferredLangCode = user?.language ? langCodeMap[user.language] || undefined : undefined;
+
     const payload = {
       message: query,
       query: query,
       crop: selectedCrop || undefined,
-      sessionId: activeSessionId
+      sessionId: activeSessionId,
+      language: preferredLangCode,
+      enable_audio: false
     };
 
     try {
@@ -312,7 +325,9 @@ export default function App() {
         crop: data.crop || selectedCrop,
         confidence: data.confidence || "Medium",
         sources: data.sources || [],
-        suggestedQuestions: data.suggested_questions || data.suggestedQuestions || []
+        suggestedQuestions: data.suggested_questions || data.suggestedQuestions || [],
+        audioBase64: data.audio_base64 || undefined,
+        detectedLanguage: data.detected_language || preferredLangCode || "en-IN"
       };
 
       setSessions(prev =>
