@@ -79,3 +79,5 @@ data/qdrant_storage/
 test_sample_gemini.py
 recover_data.py
 check_epubs.py
+*.docx
+user_questions*
