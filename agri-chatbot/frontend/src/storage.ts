@@ -80,13 +80,13 @@ export function saveActiveSessionId(id: string): void {
   }
 }
 
-export function loadUser(): User {
+export function loadUser(): User | null {
   try {
     const raw = localStorage.getItem(USER_KEY);
-    if (!raw) return DEFAULT_USER;
+    if (!raw) return null;
     return JSON.parse(raw) as User;
   } catch {
-    return DEFAULT_USER;
+    return null;
   }
 }
 
@@ -95,6 +95,14 @@ export function saveUser(user: User): void {
     localStorage.setItem(USER_KEY, JSON.stringify(user));
   } catch (err) {
     console.error("Failed to save user profile:", err);
+  }
+}
+
+export function logoutUser(): void {
+  try {
+    localStorage.removeItem(USER_KEY);
+  } catch (err) {
+    console.error("Failed to remove user profile:", err);
   }
 }
 

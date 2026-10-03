@@ -11,7 +11,8 @@ import {
   ChevronLeft, 
   ChevronRight, 
   Sprout, 
-  ShieldCheck 
+  ShieldCheck,
+  LogOut
 } from "lucide-react";
 import { ChatSession, User } from "../types";
 
@@ -24,6 +25,7 @@ interface SidebarProps {
   onRenameSession: (id: string, newTitle: string) => void;
   user: User;
   onOpenAuth: () => void;
+  onLogout: () => void;
   isCollapsed: boolean;
   onToggleCollapse: () => void;
 }
@@ -37,6 +39,7 @@ export const Sidebar = ({
   onRenameSession,
   user,
   onOpenAuth,
+  onLogout,
   isCollapsed,
   onToggleCollapse
 }: SidebarProps) => {
@@ -179,15 +182,28 @@ export const Sidebar = ({
 
       {/* User Footer Profile */}
       <div className="sidebar-footer">
-        <div className="user-profile-card" onClick={onOpenAuth}>
-          <div className="user-avatar">
-            {user.name.charAt(0).toUpperCase()}
+        <div className="user-profile-row">
+          <div className="user-profile-card" onClick={onOpenAuth} title="Manage Farmer Profile">
+            <div className="user-avatar">
+              {user.name.charAt(0).toUpperCase()}
+            </div>
+            <div className="user-info">
+              <div className="user-name">{user.name}</div>
+              <div className="user-role">{user.role} • {user.farmLocation.split(",")[0]}</div>
+            </div>
+            <Settings size={15} className="settings-icon" />
           </div>
-          <div className="user-info">
-            <div className="user-name">{user.name}</div>
-            <div className="user-role">{user.role} • {user.farmLocation.split(",")[0]}</div>
-          </div>
-          <Settings size={16} className="settings-icon" />
+          <button 
+            type="button" 
+            className="sidebar-logout-btn" 
+            onClick={(e) => {
+              e.stopPropagation();
+              onLogout();
+            }}
+            title="Log Out of Enterprise Account"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </div>
     </aside>

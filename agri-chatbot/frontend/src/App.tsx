@@ -13,6 +13,7 @@ import {
   saveActiveSessionId, 
   loadUser, 
   saveUser, 
+  logoutUser,
   loadTheme, 
   saveTheme 
 } from "./storage";
@@ -22,6 +23,7 @@ import { ChatMessage } from "./components/ChatMessage";
 import { ChatComposer } from "./components/ChatComposer";
 import { WelcomeHero } from "./components/WelcomeHero";
 import { AuthModal } from "./components/AuthModal";
+import { AuthScreen } from "./components/AuthScreen";
 
 export default function App() {
   // Persistence state
@@ -31,7 +33,7 @@ export default function App() {
     const existing = sessions.find(s => s.id === saved);
     return existing ? existing.id : sessions[0].id;
   });
-  const [user, setUser] = useState<UserType>(loadUser);
+  const [user, setUser] = useState<UserType | null>(loadUser);
   const [theme, setTheme] = useState<"dark" | "light">(loadTheme);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
@@ -108,7 +110,17 @@ export default function App() {
     setTheme(prev => (prev === "dark" ? "light" : "dark"));
   };
 
-  // User Profile
+  // User Profile & Auth
+  const handleLogin = (authenticatedUser: UserType) => {
+    setUser(authenticatedUser);
+    saveUser(authenticatedUser);
+  };
+
+  const handleLogout = () => {
+    logoutUser();
+    setUser(null);
+  };
+
   const handleSaveUser = (updatedUser: UserType) => {
     setUser(updatedUser);
     saveUser(updatedUser);
@@ -173,7 +185,7 @@ export default function App() {
 
   // Export Conversation as Markdown
   const handleExportChat = () => {
-    if (!activeSession) return;
+    if (!activeSession || !user) return;
     const dateStr = new Date(activeSession.createdAt).toLocaleDateString();
     let md = `# AgriBot 2.0 Advisory Transcript\n\n`;
     md += `**Date:** ${dateStr}\n`;
@@ -329,6 +341,10 @@ export default function App() {
     }
   };
 
+  if (!user) {
+    return <AuthScreen onLogin={handleLogin} />;
+  }
+
   const showWelcomeHero = activeSession.messages.length <= 1;
 
   return (
@@ -343,6 +359,7 @@ export default function App() {
         onRenameSession={handleRenameSession}
         user={user}
         onOpenAuth={() => setIsAuthModalOpen(true)}
+        onLogout={handleLogout}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
       />
