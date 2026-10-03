@@ -99,22 +99,24 @@ function App() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, loading]);
 
+  const AI_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || "http://localhost:8000";
+
   useEffect(() => {
-    // Health check check both backend (8080) and AI service (8000)
+    // Health check check both backend (8080) and AI service
     fetch("http://localhost:8080/api/health")
       .then(res => {
         if (res.ok) setActiveBackend("Spring Boot Gateway (:8080)");
         else throw new Error();
       })
       .catch(() => {
-        fetch("http://localhost:8000/health")
+        fetch(`${AI_BASE_URL}/health`)
           .then(res => {
-            if (res.ok) setActiveBackend("FastAPI AI Engine (:8000)");
+            if (res.ok) setActiveBackend("FastAPI AI Cloud Engine");
             else setActiveBackend("Offline");
           })
           .catch(() => setActiveBackend("AI Engine / Gateway Offline"));
       });
-  }, []);
+  }, [AI_BASE_URL]);
 
   const sendMessage = async (textToSend?: string) => {
     const query = (textToSend || input).trim();
@@ -134,7 +136,7 @@ function App() {
 
     try {
       let data: any = null;
-      // Try Spring Boot gateway first
+      // Try Spring Boot gateway first if running locally
       try {
         const res = await fetch("http://localhost:8080/api/chat", {
           method: "POST",
@@ -150,14 +152,14 @@ function App() {
       }
 
       if (!data) {
-        const aiRes = await fetch("http://localhost:8000/rag/chat", {
+        const aiRes = await fetch(`${AI_BASE_URL}/rag/chat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(payload)
         });
         if (!aiRes.ok) throw new Error(`AI service returned HTTP ${aiRes.status}`);
         data = await aiRes.json();
-        setActiveBackend("FastAPI AI Engine (:8000)");
+        setActiveBackend("FastAPI AI Cloud Engine");
       }
 
       setMessages(prev => [
