@@ -55,7 +55,7 @@ class GeminiGenerator:
     3. Live Agricultural Knowledge Fallback & Auto-Ingestion for unsupported crops.
     4. Polite rejection for non-agricultural queries.
     """
-    def __init__(self, env_path=None, model_name="models/gemini-2.5-flash"):
+    def __init__(self, env_path=None, model_name=None):
         if env_path and os.path.exists(env_path):
             load_dotenv(env_path)
         else:
@@ -68,8 +68,33 @@ class GeminiGenerator:
             single = os.getenv("LLM_API_KEY", "")
             self.api_keys = [single.strip()] if single.strip() else []
             
-        self.current_key_idx = 7 if len(self.api_keys) > 7 else 0
-        self.model_name = model_name
+        self.current_key_idx = 0
+        configured_model = os.getenv("LLM_MODEL")
+        self.model_name = model_name or configured_model or "gemini-flash-latest"
+
+    @staticmethod
+    def _extract_response_text(response) -> str:
+        """Safely extracts text from Gemini response, avoiding ValueError if finish_reason != STOP or text quick accessor fails."""
+        try:
+            if hasattr(response, "text") and response.text:
+                return response.text.strip()
+        except Exception:
+            pass
+            
+        try:
+            if hasattr(response, "candidates") and response.candidates:
+                candidate = response.candidates[0]
+                if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                    parts_text = []
+                    for part in candidate.content.parts:
+                        if hasattr(part, "text") and part.text:
+                            parts_text.append(part.text)
+                    if parts_text:
+                        return "".join(parts_text).strip()
+        except Exception:
+            pass
+            
+        return ""
 
     def _configure_key(self, key_idx: int):
         if not self.api_keys or key_idx >= len(self.api_keys):
@@ -90,11 +115,11 @@ class GeminiGenerator:
                 model = genai.GenerativeModel(model_name=self.model_name)
                 res = model.generate_content(
                     INTENT_PROMPT.format(query=query),
-                    generation_config={"temperature": 0.0, "max_output_tokens": 100},
+                    generation_config={"temperature": 0.0, "max_output_tokens": 1024},
                     request_options={"retry": None}
                 )
                 self.current_key_idx = key_idx
-                text = res.text.strip()
+                text = self._extract_response_text(res)
                 # Parse JSON
                 json_match = re.search(r"\{.*\}", text, re.DOTALL)
                 if json_match:
@@ -120,11 +145,13 @@ class GeminiGenerator:
                 prompt = WEB_FALLBACK_PROMPT.format(query=query, crop=crop or "General Agriculture")
                 response = model.generate_content(
                     prompt,
-                    generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 1200},
+                    generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 8192},
                     request_options={"retry": None}
                 )
                 self.current_key_idx = key_idx
-                raw_text = response.text.strip()
+                raw_text = self._extract_response_text(response)
+                if not raw_text:
+                    raise ValueError("Empty response received from LLM")
 
                 # Parse follow-ups & sources
                 answer_text = raw_text
@@ -272,11 +299,13 @@ FOLLOW_UP_QUESTIONS:
                 )
                 response = model.generate_content(
                     prompt,
-                    generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 1500},
+                    generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 8192},
                     request_options={"retry": None}
                 )
                 self.current_key_idx = key_idx
-                raw_text = response.text.strip()
+                raw_text = self._extract_response_text(response)
+                if not raw_text:
+                    raise ValueError("Empty response received from LLM")
                 
                 answer_text = raw_text
                 follow_ups = []
