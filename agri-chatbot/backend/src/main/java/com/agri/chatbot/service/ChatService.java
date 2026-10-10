@@ -22,7 +22,8 @@ public class ChatService {
         Map<String, Object> aiResult = aiServiceClient.generateChat(
             request.getMessage(),
             request.getCrop(),
-            request.getSessionId()
+            request.getSessionId(),
+            request.getHistory()
         );
         
         String answer = (String) aiResult.getOrDefault("answer", "No response generated.");

@@ -19,4 +19,7 @@ public class ChatRequest {
     
     @Schema(description = "Unique user session identifier for tracking conversation history", example = "session-farmer-101")
     private String sessionId;
+    
+    @Schema(description = "Recent conversation turns for multi-turn context")
+    private java.util.List<java.util.Map<String, Object>> history;
 }

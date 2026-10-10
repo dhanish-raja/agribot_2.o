@@ -87,6 +87,7 @@ class ChatRequest(BaseModel):
     sessionId: Optional[str] = None
     language: Optional[str] = None
     enable_audio: bool = False
+    history: Optional[List[dict]] = None
 
 class ChatResponse(BaseModel):
     answer: str
@@ -215,9 +216,31 @@ def rag_chat(request: ChatRequest):
                 crop_filter = c
                 break
 
+    # Inherit crop from recent conversation history if not mentioned in current query
+    if not crop_filter and request.history:
+        for turn in reversed(request.history):
+            turn_text = (turn.get("content") or "").lower()
+            for c in ["mango", "coconut", "sugarcane", "tobacco", "rice"]:
+                if c in turn_text:
+                    crop_filter = c
+                    print(f"[Conversation Context] Inherited crop '{crop_filter}' from prior chat turn.")
+                    break
+            if crop_filter:
+                break
+
     try:
-        # Step 3: Embed Query in English
-        query_vec = embedder.embed_texts([query_for_rag], task_type="retrieval_query")[0]
+        # Step 3: Embed Query in English (Contextualize follow-ups if history exists)
+        retrieval_query = query_for_rag
+        if request.history:
+            last_user_turn = None
+            for turn in reversed(request.history):
+                if turn.get("role") in ["user", "farmer"] and turn.get("content"):
+                    last_user_turn = turn["content"].strip()
+                    break
+            if last_user_turn and len(query_for_rag.split()) <= 10:
+                retrieval_query = f"{crop_filter or ''} {last_user_turn}: {query_for_rag}".strip()
+
+        query_vec = embedder.embed_texts([retrieval_query], task_type="retrieval_query")[0]
         
         # Step 4: Retrieve from Qdrant Vector DB
         hits = qdrant.search(
@@ -227,8 +250,8 @@ def rag_chat(request: ChatRequest):
             top_k=request.topK
         )
         
-        # Step 5: Grounded Gemini generation with 3-tier routing
-        res = generator.generate_rag_answer(query=query_for_rag, context_chunks=hits, crop=crop_filter)
+        # Step 5: Grounded Gemini generation with 3-tier routing and conversation context
+        res = generator.generate_rag_answer(query=query_for_rag, context_chunks=hits, crop=crop_filter, history=request.history)
         english_answer = res.get("answer", "")
 
         # Step 6: Auto-ingest new agricultural knowledge if synthesized dynamically

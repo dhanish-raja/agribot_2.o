@@ -281,13 +281,23 @@ export default function App() {
     };
     const preferredLangCode = user?.language ? langCodeMap[user.language] || undefined : undefined;
 
+    // Collect recent conversation history for multi-turn context
+    const recentHistory = activeSession.messages
+      .filter(m => m.text && !m.text.startsWith("⚠️") && !m.text.startsWith("Conversation cleared"))
+      .slice(-6)
+      .map(m => ({
+        role: m.sender === "user" ? "user" : "assistant",
+        content: m.text
+      }));
+
     const payload = {
       message: query,
       query: query,
       crop: selectedCrop || undefined,
       sessionId: activeSessionId,
       language: preferredLangCode,
-      enable_audio: false
+      enable_audio: false,
+      history: recentHistory
     };
 
     try {

@@ -133,8 +133,21 @@ class GeminiGenerator:
         is_agri = any(k in query.lower() for k in agri_keywords)
         return {"is_agricultural": is_agri, "crop": "general", "topic": "general"}
 
-    def generate_web_fallback(self, query: str, crop: str = "general") -> dict:
+    def generate_web_fallback(self, query: str, crop: str = "general", history: list = None) -> dict:
         """Generates grounded agricultural advisory for queries not present in local vector DB."""
+        history_block = ""
+        if history:
+            formatted_turns = []
+            for turn in history[-6:]:
+                role = "Farmer" if turn.get("role") in ["user", "farmer"] else "AgriBot"
+                content = (turn.get("content") or "").strip()
+                if content:
+                    if len(content) > 350:
+                        content = content[:350] + "..."
+                    formatted_turns.append(f"{role}: {content}")
+            if formatted_turns:
+                history_block = "Recent Conversation History:\n" + "\n".join(formatted_turns) + "\n\n"
+
         attempts = 0
         total_keys = len(self.api_keys)
         while attempts < total_keys:
@@ -142,7 +155,10 @@ class GeminiGenerator:
             try:
                 self._configure_key(key_idx)
                 model = genai.GenerativeModel(model_name=self.model_name)
-                prompt = WEB_FALLBACK_PROMPT.format(query=query, crop=crop or "General Agriculture")
+                prompt = (
+                    f"{history_block}" +
+                    WEB_FALLBACK_PROMPT.format(query=query, crop=crop or "General Agriculture")
+                )
                 response = model.generate_content(
                     prompt,
                     generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 8192},
@@ -208,7 +224,7 @@ class GeminiGenerator:
             "should_auto_ingest": False
         }
 
-    def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None) -> dict:
+    def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None, history: list = None) -> dict:
         """
         Given the farmer query and retrieved vector context chunks, generate a grounded answer.
         Handles:
@@ -244,7 +260,21 @@ class GeminiGenerator:
             
             # Situation 1: Genuine Agricultural Query outside local Vector DB -> Live Knowledge Retrieval!
             detected_crop = intent.get("crop") if intent.get("crop") != "general" else (crop or "general")
-            return self.generate_web_fallback(query=query, crop=detected_crop)
+            return self.generate_web_fallback(query=query, crop=detected_crop, history=history)
+
+        # Format conversation history if provided
+        history_block = ""
+        if history:
+            formatted_turns = []
+            for turn in history[-6:]:
+                role = "Farmer" if turn.get("role") in ["user", "farmer"] else "AgriBot"
+                content = (turn.get("content") or "").strip()
+                if content:
+                    if len(content) > 350:
+                        content = content[:350] + "..."
+                    formatted_turns.append(f"{role}: {content}")
+            if formatted_turns:
+                history_block = "Recent Conversation History:\n" + "\n".join(formatted_turns) + "\n\n"
 
         # Situation 0: High Confidence Local Vector DB Match!
         formatted_contexts = []
@@ -269,7 +299,7 @@ class GeminiGenerator:
 
         combined_context = "\n---\n".join(formatted_contexts)
 
-        prompt = f"""Farmer's Question: {query}
+        prompt = f"""{history_block}Farmer's Current Question: {query}
 Crop Context: {crop if crop else 'Auto-detected / Multi-crop'}
 
 Verified Context from Agricultural Knowledge Base:
@@ -277,7 +307,7 @@ Verified Context from Agricultural Knowledge Base:
 {combined_context}
 \"\"\"
 
-Please provide a well-structured, clear, actionable response based on the above verified context. 
+Please provide a well-structured, clear, actionable response based on the above verified context, addressing the farmer's question in the context of the ongoing conversation. 
 At the very end of your response, list 2-3 brief follow-up questions the farmer might find helpful, formatted as:
 FOLLOW_UP_QUESTIONS:
 - Question 1
