@@ -180,7 +180,55 @@ class GeminiGenerator:
         is_agri = any(k in query.lower() for k in agri_keywords)
         return {"is_agricultural": is_agri, "crop": "general", "topic": "general"}
 
-    def generate_web_fallback(self, query: str, crop: str = "general", history: list = None) -> dict:
+    def analyze_crop_image(self, image: Any, user_text: str = None) -> dict:
+        """
+        Uses Gemini Multimodal Vision to inspect the uploaded plant/leaf image.
+        Returns:
+            - detected_crop: e.g. 'mango', 'rice', 'coconut', 'sugarcane', 'tobacco'
+            - visual_symptoms: description of visual lesions/spots/insects/damage
+            - likely_problem: disease/pest/nutrient deficiency name
+            - search_query: search terms for agricultural vector database retrieval
+        """
+        prompt = (
+            "You are an expert agricultural plant pathologist and entomologist. "
+            "Examine this crop leaf/plant photo closely.\n"
+            f"Farmer's query: '{user_text or ''}'\n\n"
+            "Analyze the image and return ONLY a valid JSON object in this exact format:\n"
+            "{\n"
+            '  "detected_crop": "mango/coconut/sugarcane/tobacco/rice/or specific plant name",\n'
+            '  "visual_symptoms": "short 1-2 sentence description of visual lesions/spots/damage",\n'
+            '  "likely_problem": "disease, pest, or nutrient deficiency name",\n'
+            '  "search_query": "3-5 key search terms for vector knowledge retrieval"\n'
+            "}"
+        )
+        attempts = 0
+        total_keys = len(self.api_keys)
+        while attempts < total_keys:
+            key_idx = (self.current_key_idx + attempts) % total_keys
+            try:
+                self._configure_key(key_idx)
+                model = genai.GenerativeModel(model_name=self.model_name)
+                res = model.generate_content(
+                    [image, prompt],
+                    generation_config={"temperature": 0.1, "max_output_tokens": 1024},
+                    request_options={"retry": None}
+                )
+                self.current_key_idx = key_idx
+                text = self._extract_response_text(res)
+                m = re.search(r"\{.*\}", text, re.DOTALL)
+                if m:
+                    return json.loads(m.group(0))
+                break
+            except Exception:
+                attempts += 1
+        return {
+            "detected_crop": "general",
+            "visual_symptoms": "Visible plant foliage abnormalities",
+            "likely_problem": "Crop disorder",
+            "search_query": user_text or "crop disease diagnosis"
+        }
+
+    def generate_web_fallback(self, query: str, crop: str = "general", history: list = None, image: Any = None) -> dict:
         """Generates grounded agricultural advisory for queries not present in local vector DB."""
         history_block = ""
         if history:
@@ -195,6 +243,13 @@ class GeminiGenerator:
             if formatted_turns:
                 history_block = "Recent Conversation History:\n" + "\n".join(formatted_turns) + "\n\n"
 
+        image_prompt_note = ""
+        if image:
+            image_prompt_note = (
+                "\nPHOTO ATTACHED BY FARMER:\n"
+                "The farmer uploaded a photo of the plant. Inspect the visual symptoms in the image carefully and integrate your observations into the advisory.\n\n"
+            )
+
         attempts = 0
         total_keys = len(self.api_keys)
         while attempts < total_keys:
@@ -203,11 +258,12 @@ class GeminiGenerator:
                 self._configure_key(key_idx)
                 model = genai.GenerativeModel(model_name=self.model_name)
                 prompt = (
-                    f"{history_block}" +
+                    f"{history_block}{image_prompt_note}" +
                     WEB_FALLBACK_PROMPT.format(query=query, crop=crop or "General Agriculture")
                 )
+                content_input = [image, prompt] if image else prompt
                 response = model.generate_content(
-                    prompt,
+                    content_input,
                     generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 8192},
                     request_options={"retry": None}
                 )
@@ -271,7 +327,7 @@ class GeminiGenerator:
             "should_auto_ingest": False
         }
 
-    def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None, history: list = None) -> dict:
+    def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None, history: list = None, image: Any = None) -> dict:
         """
         Given the farmer query and retrieved vector context chunks, generate a grounded answer.
         Handles:
@@ -307,7 +363,7 @@ class GeminiGenerator:
             
             # Situation 1: Genuine Agricultural Query outside local Vector DB -> Live Knowledge Retrieval!
             detected_crop = intent.get("crop") if intent.get("crop") != "general" else (crop or "general")
-            return self.generate_web_fallback(query=query, crop=detected_crop, history=history)
+            return self.generate_web_fallback(query=query, crop=detected_crop, history=history, image=image)
 
         # Format conversation history if provided
         history_block = ""
@@ -322,6 +378,13 @@ class GeminiGenerator:
                     formatted_turns.append(f"{role}: {content}")
             if formatted_turns:
                 history_block = "Recent Conversation History:\n" + "\n".join(formatted_turns) + "\n\n"
+
+        photo_notes = ""
+        if image:
+            photo_notes = (
+                "\nPHOTO ATTACHED BY FARMER:\n"
+                "The farmer uploaded a photo of the crop/leaf. Examine the photo carefully, describe the visible lesions, spots, or pest damage you observe, and synthesize your diagnosis using both the image and verified agricultural context.\n\n"
+            )
 
         # Situation 0: High Confidence Local Vector DB Match!
         formatted_contexts = []
@@ -346,7 +409,7 @@ class GeminiGenerator:
 
         combined_context = "\n---\n".join(formatted_contexts)
 
-        prompt = f"""{history_block}Farmer's Current Question: {query}
+        prompt = f"""{history_block}{photo_notes}Farmer's Current Question: {query}
 Crop Context: {crop if crop else 'Auto-detected / Multi-crop'}
 
 Verified Context from Agricultural Knowledge Base:
@@ -374,8 +437,9 @@ FOLLOW_UP_QUESTIONS:
                     model_name=self.model_name,
                     system_instruction=SYSTEM_PROMPT
                 )
+                content_input = [image, prompt] if image else prompt
                 response = model.generate_content(
-                    prompt,
+                    content_input,
                     generation_config={"temperature": 0.2, "top_p": 0.85, "max_output_tokens": 8192},
                     request_options={"retry": None}
                 )

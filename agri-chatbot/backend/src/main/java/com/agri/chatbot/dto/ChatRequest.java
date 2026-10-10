@@ -22,4 +22,9 @@ public class ChatRequest {
     
     @Schema(description = "Recent conversation turns for multi-turn context")
     private java.util.List<java.util.Map<String, Object>> history;
+    
+    @Schema(description = "Base64 encoded image string for visual leaf/crop diagnosis")
+    private String image;
+    
+    private String image_base64;
 }

@@ -297,7 +297,9 @@ export default function App() {
       sessionId: activeSessionId,
       language: preferredLangCode,
       enable_audio: false,
-      history: recentHistory
+      history: recentHistory,
+      image: imageBase64,
+      image_base64: imageBase64
     };
 
     try {

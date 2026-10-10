@@ -24,7 +24,7 @@ public class AiServiceClient {
     }
 
     @SuppressWarnings("unchecked")
-    public Map<String, Object> generateChat(String message, String crop, String sessionId, List<Map<String, Object>> history) {
+    public Map<String, Object> generateChat(String message, String crop, String sessionId, List<Map<String, Object>> history, String image) {
         String url = aiServiceUrl + "/rag/chat";
         Map<String, Object> request = new HashMap<>();
         request.put("message", message);
@@ -36,6 +36,10 @@ public class AiServiceClient {
         }
         if (history != null && !history.isEmpty()) {
             request.put("history", history);
+        }
+        if (image != null && !image.isBlank()) {
+            request.put("image", image);
+            request.put("image_base64", image);
         }
 
         try {

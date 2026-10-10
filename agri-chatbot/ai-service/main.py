@@ -1,13 +1,32 @@
 import os
+import io
+import base64
 from typing import Optional, List, Any
 from fastapi import FastAPI, HTTPException, UploadFile, File, Form
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
+from PIL import Image
 
 from embeddings.embedder import GeminiEmbedder
 from rag.qdrant_service import QdrantService
 from rag.generator import GeminiGenerator
 from sarvam.sarvam_service import SarvamService
+
+def load_image_from_b64(b64_str: Optional[str]) -> Optional[Image.Image]:
+    if not b64_str:
+        return None
+    try:
+        clean_b64 = b64_str
+        if "," in clean_b64:
+            clean_b64 = clean_b64.split(",", 1)[1]
+        img_bytes = base64.b64decode(clean_b64)
+        img = Image.open(io.BytesIO(img_bytes))
+        if img.mode not in ("RGB", "L"):
+            img = img.convert("RGB")
+        return img
+    except Exception as e:
+        print(f"[Image Decode Warning] {e}")
+        return None
 
 # Load environment configuration
 ai_service_dir = os.path.dirname(os.path.abspath(__file__))
@@ -88,6 +107,8 @@ class ChatRequest(BaseModel):
     language: Optional[str] = None
     enable_audio: bool = False
     history: Optional[List[dict]] = None
+    image: Optional[str] = None
+    image_base64: Optional[str] = None
 
 class ChatResponse(BaseModel):
     answer: str
@@ -188,9 +209,13 @@ def rag_chat(request: ChatRequest):
         
     raw_user_query = request.query or request.message
     if not raw_user_query or not raw_user_query.strip():
-        raise HTTPException(status_code=400, detail="Query or message text is required.")
+        if request.image or request.image_base64:
+            raw_user_query = "Please analyze this crop image and diagnose any disease, pest, or nutrient deficiency shown."
+        else:
+            raise HTTPException(status_code=400, detail="Query or message text is required.")
 
     raw_user_query = raw_user_query.strip()
+    crop_filter = request.crop
     
     # Step 1: Language Detection
     detected_lang = request.language
@@ -208,8 +233,26 @@ def rag_chat(request: ChatRequest):
         except Exception as trans_err:
             print(f"[Translation to English Warning] {trans_err}")
 
+    # Step 2.5: Image Decoding & Multimodal Visual Pre-Analysis
+    raw_image_b64 = request.image or request.image_base64
+    pil_image = load_image_from_b64(raw_image_b64)
+    visual_info = None
+    if pil_image and generator:
+        try:
+            visual_info = generator.analyze_crop_image(pil_image, raw_user_query)
+            print(f"[Multimodal Vision] Detected Crop: '{visual_info.get('detected_crop')}', Problem: '{visual_info.get('likely_problem')}'")
+            if not crop_filter and visual_info.get("detected_crop") and visual_info.get("detected_crop").lower() != "general":
+                det_crop = visual_info.get("detected_crop").lower()
+                for c in ["mango", "coconut", "sugarcane", "tobacco", "rice"]:
+                    if c in det_crop:
+                        crop_filter = c
+                        break
+                if not crop_filter:
+                    crop_filter = det_crop
+        except Exception as vis_err:
+            print(f"[Visual Analysis Warning] {vis_err}")
+
     # Auto-detect crop if not explicitly passed
-    crop_filter = request.crop.lower().strip() if request.crop else None
     if not crop_filter:
         for c in ["mango", "coconut", "sugarcane", "tobacco", "rice"]:
             if c in query_for_rag.lower() or c in raw_user_query.lower():
@@ -229,9 +272,11 @@ def rag_chat(request: ChatRequest):
                 break
 
     try:
-        # Step 3: Embed Query in English (Contextualize follow-ups if history exists)
+        # Step 3: Embed Query in English (Contextualize follow-ups and visual findings)
         retrieval_query = query_for_rag
-        if request.history:
+        if visual_info and visual_info.get("search_query"):
+            retrieval_query = f"{crop_filter or ''} {visual_info.get('search_query')}".strip()
+        elif request.history:
             last_user_turn = None
             for turn in reversed(request.history):
                 if turn.get("role") in ["user", "farmer"] and turn.get("content"):
@@ -250,8 +295,14 @@ def rag_chat(request: ChatRequest):
             top_k=request.topK
         )
         
-        # Step 5: Grounded Gemini generation with 3-tier routing and conversation context
-        res = generator.generate_rag_answer(query=query_for_rag, context_chunks=hits, crop=crop_filter, history=request.history)
+        # Step 5: Grounded Gemini generation with 3-tier routing, conversation context, and image vision
+        res = generator.generate_rag_answer(
+            query=query_for_rag, 
+            context_chunks=hits, 
+            crop=crop_filter, 
+            history=request.history,
+            image=pil_image
+        )
         english_answer = res.get("answer", "")
 
         # Step 6: Auto-ingest new agricultural knowledge if synthesized dynamically
@@ -361,5 +412,16 @@ def generate_embedding(text: str):
     return {"text": text, "dimension": len(vec), "embedding": vec}
 
 @app.post("/cv/predict")
-def cv_predict():
-    return {"status": "Pending CV model integration in Step 5"}
+async def cv_predict(file: UploadFile = File(...)):
+    """Multimodal computer vision endpoint for crop disease diagnosis from uploaded leaf image."""
+    if not generator:
+        raise HTTPException(status_code=503, detail="AI generator not initialized.")
+    try:
+        content = await file.read()
+        pil_img = Image.open(io.BytesIO(content))
+        if pil_img.mode not in ("RGB", "L"):
+            pil_img = pil_img.convert("RGB")
+        analysis = generator.analyze_crop_image(pil_img)
+        return analysis
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Image vision analysis failed: {str(e)}")

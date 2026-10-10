@@ -19,11 +19,16 @@ public class ChatService {
 
     @SuppressWarnings("unchecked")
     public ChatResponse processChat(ChatRequest request) {
+        String imagePayload = request.getImage() != null && !request.getImage().isBlank() 
+            ? request.getImage() 
+            : request.getImage_base64();
+
         Map<String, Object> aiResult = aiServiceClient.generateChat(
             request.getMessage(),
             request.getCrop(),
             request.getSessionId(),
-            request.getHistory()
+            request.getHistory(),
+            imagePayload
         );
         
         String answer = (String) aiResult.getOrDefault("answer", "No response generated.");
