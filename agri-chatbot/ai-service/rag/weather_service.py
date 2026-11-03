@@ -36,23 +36,27 @@ def detect_location(
     if not text:
         return profile_location
 
-    # 1. Direct regex match in query
-    for pattern in LOCATION_PATTERNS:
-        m = re.search(pattern, text, re.IGNORECASE)
-        if m:
-            candidate = m.group(1).strip()
-            candidate = re.sub(r"^(a|an|the|my)\s+", "", candidate, flags=re.IGNORECASE).strip()
-            # Eliminate trivial non-location words
-            if len(candidate) >= 3 and candidate.lower() not in [
-                "india", "village", "town", "city", "farm", "field", "today", "now", "summer", "winter", "monsoon"
-            ]:
-                return candidate
-
-    # 2. Match against known agricultural regions
+    # 1. First check against known agricultural regions (exact, high-precision match)
     text_lower = text.lower()
     for reg in KNOWN_AGRI_REGIONS:
         if re.search(rf"\b{reg}\b", text_lower):
             return reg.capitalize()
+
+    # 2. Direct regex match in query
+    for pattern in LOCATION_PATTERNS:
+        m = re.search(pattern, text, re.IGNORECASE)
+        if m:
+            candidate = m.group(1).strip()
+            # If candidate contains ' in ', take the last part (e.g. 'black soil in Amaravati' -> 'Amaravati')
+            if " in " in candidate.lower():
+                candidate = candidate.lower().split(" in ")[-1].strip()
+            candidate = re.sub(r"^(a|an|the|my|black|red|alluvial|sandy|clay|loamy)\s+(soil|land|field)\s*(in|near|around)?\s*", "", candidate, flags=re.IGNORECASE).strip()
+            candidate = re.sub(r"^(a|an|the|my)\s+", "", candidate, flags=re.IGNORECASE).strip()
+            # Eliminate trivial non-location words
+            if len(candidate) >= 3 and candidate.lower() not in [
+                "india", "village", "town", "city", "farm", "field", "today", "now", "summer", "winter", "monsoon", "soil", "black soil", "red soil"
+            ]:
+                return candidate.capitalize()
 
     # 3. Check conversation history turns
     if history:
@@ -250,3 +254,80 @@ LIVE REAL-TIME AGRO-METEOROLOGICAL & REGIONAL INTELLIGENCE:
 ==========================================================
 """
     return context_str.strip()
+
+def is_yield_estimation_query(query: str) -> bool:
+    """
+    Detects if the query asks for yield estimation, production forecasting, output per acre,
+    or provides inputs like soil, fertilizer, place, and crop to calculate expected harvest.
+    """
+    q = query.lower()
+    patterns = [
+        r"\b(yield|production|output|harvest|produce)\b.*?\b(estimate|forecast|expect|get|how much|calculate|per acre|per hectare|how many)\b",
+        r"\b(how much|how many|what)\b.*?\b(yield|production|output|quintals|bags|tonnes|tons|nuts|harvest)\b",
+        r"\b(estimate|expectation|potential)\b.*?\b(yield|production|output|harvest)\b",
+        r"\b(fertilizer|fertilizers|urea|dap|mop|npk|potash|compost)\b.*?\b(yield|production|get|output|harvest)\b",
+        r"\b(soil|black soil|red soil|alluvial)\b.*?\b(yield|production|how much|output)\b",
+        r"\b(quintals|bags per acre|tonnes per acre|nuts per tree)\b"
+    ]
+    return any(re.search(p, q, re.DOTALL) for p in patterns)
+
+def get_yield_benchmark_context(crop_name: str = None) -> str:
+    """
+    Returns verified ICAR and State Agricultural University yield ranges, standard RDF,
+    nutrient requirements, and critical cross-questions.
+    """
+    c = (crop_name or "").lower()
+    
+    benchmarks = """
+ICAR & STATE AGRICULTURAL UNIVERSITIES (SAU) OFFICIAL CROP YIELD & INPUT BENCHMARKS:
+==================================================================================
+1. RICE / PADDY (IRRIGATION / ALLUVIAL & BLACK SOILS):
+   - Potential Optimum Yield (Full RDF & High-Yield Variety e.g. BPT 5204 / MTU 1010): 24 - 32 Quintals/acre (approx 32 - 42 bags of 75kg).
+   - Average / Suboptimal Inputs Yield: 16 - 22 Quintals/acre.
+   - Recommended Dose of Fertilizer (RDF per acre): 40-48 kg N (2-2.5 bags Urea), 24 kg P2O5 (1 bag DAP), 24 kg K2O (1 bag MOP) + 10-15 kg Zinc Sulphate.
+   - Critical Nutrient Rules:
+     * If only Urea + DAP applied without MOP (Potash): Grains will suffer from poor test weight, chaffiness, and lodging. Potash is non-negotiable for grain filling.
+     * Zinc deficiency causes Khaira / severe chlorosis in alkaline black soils.
+   - Yield Estimation Cross-Questions to Ask:
+     a) Exact acreage / land area under cultivation?
+     b) Specific variety or hybrid (e.g. BPT 5204 Samba Mahsuri vs MTU 1010)?
+     c) Sowing date and whether Zinc Sulphate and Potash (MOP) were included?
+
+2. SUGARCANE (TROPICAL / ALLUVIAL BLACK SOILS):
+   - Potential Optimum Yield (High recovery varieties e.g. Co 86032, Co 0212): 45 - 60 Tonnes/acre.
+   - Average Yield under standard management: 32 - 40 Tonnes/acre.
+   - RDF per acre: 100-112 kg N, 28 kg P2O5, 48 kg K2O in 3-4 splits (at planting, 30, 60, and 90 days) + Earthing up at 120 days.
+   - Critical Nutrient Rules: Nitrogen after 120 days reduces sucrose recovery and increases vegetative late tillers. Potash ensures cane girth and drought resilience.
+   - Cross-Questions to Ask:
+     a) Is it a plant crop or ratoon crop?
+     b) Planting season (Adsali / Eksali) and spacing used?
+     c) Irrigation system (Drip fertigation or Furrow flooding)?
+
+3. COCONUT (IRRIGATED ALLUVIAL / DELTAIC TRACTS):
+   - Potential Optimum Yield (Adult 7+ year palms with balanced NPK & drip): 90 - 130 Nuts per palm per year.
+   - Rainfed / Suboptimal Inputs Yield: 45 - 70 Nuts per palm per year.
+   - RDF per adult palm/year: 500g N (1.1kg Urea), 320g P2O5 (2kg Single Super Phosphate), 1200g K2O (2kg MOP) + 50g Borax + 500g Magnesium Sulphate in 2 splits.
+   - Critical Nutrient Rules: Potash is the #1 yield driver for copra weight and nut retention. Borax prevents button shedding.
+   - Cross-Questions to Ask:
+     a) Age of the coconut grove / trees?
+     b) Number of bearing palms?
+     c) Irrigation frequency in summer months?
+
+4. MANGO (ORCHARDS / WELL-DRAINED RED & SANDY LOAMS):
+   - Potential Optimum Yield (Mature 10+ year grafted trees e.g. Banganapalli, Totapuri): 4.5 - 7.5 Tonnes/acre (50 - 85 kg fruit per tree).
+   - Young 5-8 year trees: 15 - 35 kg fruit per tree.
+   - RDF per mature tree/year: 1000g N, 500g P2O5, 1000g K2O + 50kg well-decomposed FYM after harvest.
+   - Critical Nutrient Rules: Foliar spray of 1% 13:0:45 (Potassium Nitrate) + 0.2% Boron at marble-size fruit stage cuts fruit drop by 40%.
+   - Cross-Questions to Ask:
+     a) Age of the orchard and tree spacing (e.g. standard 10m x 10m or High Density 5m x 5m)?
+     b) Flowering / fruit set status this season?
+     c) Recent history of hopper or anthracnose management?
+
+5. GUNTUR CHILLI & COTTON (BLACK COTTON SOILS):
+   - Chilli Optimum Yield: 20 - 28 Quintals dry chilli/acre (hybrids e.g. Teja, LCA 334).
+   - Bt Cotton Optimum Yield: 9 - 14 Quintals (kapas)/acre.
+   - Critical Nutrient Rules: Black soils bind phosphorus; use split nitrogen and supplementary foliar potassium & boron.
+==================================================================================
+"""
+    return benchmarks.strip()
+

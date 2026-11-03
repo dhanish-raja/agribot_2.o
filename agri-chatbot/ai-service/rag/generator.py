@@ -60,7 +60,30 @@ Guiding Diagnostic & Advisory Principles:
           2. Soil Type & Drainage: "What is your field's soil texture — deep black cotton clay, river alluvium, or well-drained sandy loam?"
           3. Sowing Season & Farmer Horizon: "Are you planning for immediate Rabi (winter), upcoming Kharif (monsoon), or a multi-year orchard/plantation crop?"
 
-7. RESPONSE STRUCTURE:
+7. CROP YIELD ESTIMATION & PRODUCTION FORECASTING:
+   - When a farmer asks about expected yield, production output, or provides details like crop, soil type, location, and fertilizers used (e.g. "If I grow Rice in Amaravati with black soil using Urea and DAP, how much yield can I get?"):
+     a) PROVIDE A CONCRETE ESTIMATED YIELD RANGE:
+        - Output yield in standard Indian agricultural units:
+          * Rice/Paddy: Quintals/acre (e.g. 24–32 q/acre for high-yielding varieties with full RDF; 16–22 q/acre with basic N-P) or Bags/acre (75 kg bags)
+          * Sugarcane: Tonnes/acre (e.g. 45–60 tonnes/acre in alluvial black soils with balanced NPK; 32–40 tonnes/acre average)
+          * Coconut: Nuts per palm per year (e.g. 90–130 nuts/palm/year for mature 7+ yr palms with irrigation & NPK)
+          * Mango: Tonnes/acre or kg/tree (e.g. 4.5–7.5 tonnes/acre; 50–85 kg/tree for mature 10+ yr Banganapalli trees)
+          * Tobacco (FCV): Quintals/acre of cured leaf (e.g. 8–10.5 q/acre in black/light soils)
+          * Chilli / Cotton: Quintals/acre (e.g. 20–28 q/acre dry Chilli; 9–14 q/acre Bt Cotton)
+        - Clearly contrast **Potential Optimum Yield** (with certified ICAR/SAU package) vs **Expected Realistic Yield** given their stated inputs.
+     b) INPUT & FERTILIZER BALANCE ANALYSIS:
+        - Analyze what fertilizers they stated:
+          * If only Urea + DAP: Warn that Potash (MOP) is missing, which is vital for grain filling, disease resistance, and test weight, and that Zinc Sulphate is essential in black soils to prevent Khaira/chlorosis.
+          * Point out the Recommended Dose of Fertilizer (RDF) split: Basal vs Tillering vs Panicle emergence / flowering.
+     c) SOIL & REGIONAL INTERACTION:
+        - Explain how their specific soil (e.g. Black Cotton soil Vertisol high water retention vs Alluvial vs Red sandy loam) and regional climate affect this production.
+     d) DIAGNOSTIC CROSS-QUESTIONS FOR GREATER PRECISION:
+        - Ask 2-3 focused follow-up questions to refine the yield calculation:
+          1. Acreage / Total Area: "What is your total land area (number of acres or cents)?"
+          2. Variety / Hybrid: "Which exact variety or hybrid are you cultivating (e.g., BPT 5204 Samba Mahsuri vs MTU 1010 for Rice; Co 86032 for Cane)?"
+          3. Sowing Date / Crop Stage & Irrigation: "When was the crop transplanted/sown, and what is your irrigation frequency?"
+
+8. RESPONSE STRUCTURE:
    Format responses with clear, readable markdown sections:
    - For Disease / Pest / Nutrient queries:
      * **Diagnosis & Potential Causes**
@@ -72,11 +95,17 @@ Guiding Diagnostic & Advisory Principles:
      * **Regional Agro-Climatic & Live Weather Overview** (explicitly cite location, weather, soil, and water dynamics)
      * **Recommended Crops by Soil & Water Availability** (grouped by canal, borewell, upland, and pulse fallows)
      * **Key Diagnostic Cross-Questions to Finalize Your Plan**
+   - For Yield Estimation & Production Queries:
+     * **Estimated Production & Yield Benchmark** (Quintals/acre, Tonnes/acre, Bags/acre, or Nuts/tree)
+     * **Evaluation of Fertilizer Inputs & Nutrient Gaps** (Urea/DAP/MOP analysis, missing Potash/Zinc/Boron, split timing)
+     * **Soil & Regional Impact on Yield** (how black soil/alluvial soil and local weather influence output)
+     * **Actionable Tips to Maximize Harvest Potential**
+     * **Key Follow-up Questions to Pinpoint Exact Farm Output**
    
    At the very end of your response, output:
    FOLLOW_UP_QUESTIONS:
-   - Question 1 (e.g. asking about specific water source or soil type)
-   - Question 2 (e.g. asking about specific crop variety or season)
+   - Question 1 (e.g. asking about specific acreage or variety)
+   - Question 2 (e.g. asking about irrigation frequency or split timing)
 """
 
 INTENT_PROMPT = """You are an intent classification system for an agricultural chatbot.
@@ -106,12 +135,23 @@ Rules:
    - Cite the regional agro-climatic profile, live weather observations, predominant soil types, and irrigation infrastructure.
    - Present grounded crop choices grouped by water availability (assured canal vs. borewell vs. rainfed).
    - Ask 2-3 focused diagnostic cross-questions regarding their exact water source, soil texture, and season.
+6. For Yield Estimation & Production Forecasting Inquiries (e.g. how much yield can I get with my crop, soil, place, and fertilizers):
+   - Provide concrete estimated yield ranges (Quintals/acre, Tonnes/acre, Bags/acre, or Nuts/tree) comparing Potential Optimum vs Expected based on inputs.
+   - Evaluate fertilizer inputs (e.g. Urea + DAP vs missing Potash / Zinc / Micronutrients) and timing.
+   - Detail soil type and regional climate impact.
+   - Ask 2-3 focused diagnostic cross-questions regarding acreage, exact variety, and irrigation frequency.
 
 Structure your response cleanly:
 - For Regional Crop Selection:
   1. **Regional Agro-Climatic & Live Weather Overview** (cite location, weather, soil, and water dynamics)
   2. **Recommended Crops by Soil & Water Availability** (grouped by canal, borewell, upland, and pulse fallows)
   3. **Key Diagnostic Cross-Questions to Finalize Your Plan**
+- For Yield Estimation & Production Queries:
+  1. **Estimated Production & Yield Benchmark** (realistic range vs optimal potential)
+  2. **Evaluation of Fertilizer Inputs & Nutrient Gaps** (Urea/DAP/MOP analysis, missing Potash/Zinc/Boron, split timing)
+  3. **Soil & Regional Impact on Yield**
+  4. **Actionable Tips to Maximize Harvest Potential**
+  5. **Key Follow-up Questions to Pinpoint Exact Farm Output**
 - For Disease / Pest / Nutrient Management:
   1. **Diagnosis & Overview**
   2. **Cultural & Preventive Measures**
@@ -122,8 +162,8 @@ At the end of your response, output two sections:
 SOURCES:
 - Source Name (e.g., ICAR / State Agricultural Universities / Vikaspedia)
 FOLLOW_UP_QUESTIONS:
-- Suggested diagnostic question 1 (e.g. water source or soil texture)
-- Suggested diagnostic question 2 (e.g. target season or crop variety)
+- Suggested diagnostic question 1 (e.g. exact acreage, soil texture, or variety)
+- Suggested diagnostic question 2 (e.g. fertilizer split timing or irrigation frequency)
 """
 
 class GeminiGenerator:
@@ -149,7 +189,7 @@ class GeminiGenerator:
             
         self.current_key_idx = 0
         configured_model = os.getenv("LLM_MODEL")
-        self.model_name = model_name or configured_model or "gemini-flash-latest"
+        self.model_name = model_name or configured_model or "gemini-2.5-flash"
 
     @staticmethod
     def _extract_response_text(response) -> str:

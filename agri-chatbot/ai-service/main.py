@@ -15,7 +15,9 @@ from rag.weather_service import (
     detect_location,
     fetch_live_weather,
     is_crop_selection_or_weather_query,
-    get_regional_agro_climatic_context
+    get_regional_agro_climatic_context,
+    is_yield_estimation_query,
+    get_yield_benchmark_context
 )
 
 def load_image_from_b64(b64_str: Optional[str]) -> Optional[Image.Image]:
@@ -279,14 +281,14 @@ def rag_chat(request: ChatRequest):
             if crop_filter:
                 break
 
-    # Step 2.6: Regional Agro-Climatic & Live Weather Intelligence
+    # Step 2.6: Regional Agro-Climatic, Live Weather & Yield Estimation Intelligence
     agro_context = None
     detected_loc = detect_location(
         text=raw_user_query,
         history=request.history,
         profile_location=request.location or request.farmLocation
     )
-    if detected_loc and is_crop_selection_or_weather_query(raw_user_query):
+    if detected_loc and (is_crop_selection_or_weather_query(raw_user_query) or is_yield_estimation_query(raw_user_query)):
         try:
             weather_info = fetch_live_weather(detected_loc)
             if weather_info:
@@ -294,6 +296,15 @@ def rag_chat(request: ChatRequest):
                 print(f"[Agro Intelligence] Fetched live weather for '{detected_loc}': {weather_info.get('temperature_c')}C, {weather_info.get('condition')}")
         except Exception as agro_err:
             print(f"[Agro Intelligence Warning] {agro_err}")
+
+    # Inject ICAR yield estimation benchmarks & nutrient dynamics if farmer asks for production forecast
+    if is_yield_estimation_query(raw_user_query):
+        yield_benchmarks = get_yield_benchmark_context(crop_filter)
+        if agro_context:
+            agro_context = f"{agro_context}\n\n{yield_benchmarks}"
+        else:
+            agro_context = yield_benchmarks
+        print(f"[Yield Intelligence] Injected ICAR production benchmarks for '{crop_filter or 'general'}'")
 
     try:
         # Step 3: Embed Query in English (Contextualize follow-ups and visual findings)
