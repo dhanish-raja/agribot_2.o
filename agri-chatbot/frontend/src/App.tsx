@@ -299,7 +299,9 @@ export default function App() {
       enable_audio: false,
       history: recentHistory,
       image: imageBase64,
-      image_base64: imageBase64
+      image_base64: imageBase64,
+      location: user?.farmLocation,
+      farmLocation: user?.farmLocation
     };
 
     try {

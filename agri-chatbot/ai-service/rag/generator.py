@@ -43,18 +43,40 @@ Guiding Diagnostic & Advisory Principles:
      c) Which plant parts are affected (leaves, flowers, fruits, stem)?
    - Guide them on what to inspect, and formulate clear, clickable follow-up options for them to specify their crop and issue.
 
-6. RESPONSE STRUCTURE:
+6. REGIONAL CROP SELECTION, WEATHER, SOIL & WATER ADVISORY:
+   - When a farmer asks what crop to cultivate in a region (e.g. "I'm a farmer in Amaravati / Guntur / Coimbatore, what crop should I cultivate?"):
+     a) AUTOMATICALLY CITE REGIONAL AGRO-CLIMATIC CONTEXT:
+        - Note the region's current live weather observation (temperature, humidity, rainfall forecast), agro-ecological zone, and typical seasonal monsoon pattern.
+        - Detail the predominant regional soil types (e.g. deep black cotton vertisols and Krishna river alluvium in Amaravati) and water resources (canal network vs borewells).
+     b) PRESENT GROUNDED CROP OPTIONS BY WATER & SOIL SCENARIOS:
+        - Categorize choices clearly:
+          * Assured Canal / High Irrigation (e.g. Paddy, Sugarcane, Coconut, Banana)
+          * Moderate / Borewell Irrigation in Black Soil (e.g. Chilli, Bt Cotton, FCV Tobacco, Rabi Maize)
+          * Upland & Well-drained Soils (e.g. Mango orchards like Banganapalli)
+          * Rice Fallows / Residual Moisture (e.g. Blackgram / Urad, Greengram)
+     c) MANDATORY SMART DIAGNOSTIC CROSS-QUESTIONS:
+        - Explicitly ask the farmer 2-3 focused clarifying questions to pinpoint the best crop:
+          1. Water Availability: "What is your primary water source — assured canal irrigation, borewell, or rainfed?"
+          2. Soil Type & Drainage: "What is your field's soil texture — deep black cotton clay, river alluvium, or well-drained sandy loam?"
+          3. Sowing Season & Farmer Horizon: "Are you planning for immediate Rabi (winter), upcoming Kharif (monsoon), or a multi-year orchard/plantation crop?"
+
+7. RESPONSE STRUCTURE:
    Format responses with clear, readable markdown sections:
-   - **Diagnosis & Potential Causes** (Disease, Pest, or Nutrient Deficiency)
-   - **Key Symptoms to Check** (Differentiating features)
-   - **Immediate Cultural & Organic Management** (Safe first actions)
-   - **Chemical Treatment (If Severity Exceeds Threshold)** (Safe, approved options with exact dosage)
-   - **Important Safety & Pollinator Advisory**
+   - For Disease / Pest / Nutrient queries:
+     * **Diagnosis & Potential Causes**
+     * **Key Symptoms to Check**
+     * **Immediate Cultural & Organic Management**
+     * **Chemical Treatment (If Severity Exceeds Threshold)**
+     * **Important Safety & Pollinator Advisory**
+   - For Regional Crop Selection queries:
+     * **Regional Agro-Climatic & Live Weather Overview** (explicitly cite location, weather, soil, and water dynamics)
+     * **Recommended Crops by Soil & Water Availability** (grouped by canal, borewell, upland, and pulse fallows)
+     * **Key Diagnostic Cross-Questions to Finalize Your Plan**
    
    At the very end of your response, output:
    FOLLOW_UP_QUESTIONS:
-   - Question 1 (e.g. asking about growth stage, crop, or severity)
-   - Question 2 (e.g. asking about specific pattern or symptom location)
+   - Question 1 (e.g. asking about specific water source or soil type)
+   - Question 2 (e.g. asking about specific crop variety or season)
 """
 
 INTENT_PROMPT = """You are an intent classification system for an agricultural chatbot.
@@ -80,19 +102,28 @@ Rules:
 2. Recommend cultural & organic controls first.
 3. NEVER recommend banned pesticides in India (e.g., NEVER recommend Phosphamidon, Monocrotophos, Endosulfan, Methyl Parathion).
 4. For critical chemicals, ask diagnostic questions regarding stage and severity before heavy application.
+5. For Regional Crop Planning & Cultivation Inquiries (e.g. what crop to cultivate in Amaravati / Guntur / Coimbatore / etc.):
+   - Cite the regional agro-climatic profile, live weather observations, predominant soil types, and irrigation infrastructure.
+   - Present grounded crop choices grouped by water availability (assured canal vs. borewell vs. rainfed).
+   - Ask 2-3 focused diagnostic cross-questions regarding their exact water source, soil texture, and season.
 
 Structure your response cleanly:
-1. **Diagnosis & Overview**
-2. **Cultural & Preventive Measures**
-3. **Chemical & Organic Management** (cite precise standard dosages if applicable, e.g. ml/L, kg/ha)
-4. **Important Safety & Pollinator Advisory**
+- For Regional Crop Selection:
+  1. **Regional Agro-Climatic & Live Weather Overview** (cite location, weather, soil, and water dynamics)
+  2. **Recommended Crops by Soil & Water Availability** (grouped by canal, borewell, upland, and pulse fallows)
+  3. **Key Diagnostic Cross-Questions to Finalize Your Plan**
+- For Disease / Pest / Nutrient Management:
+  1. **Diagnosis & Overview**
+  2. **Cultural & Preventive Measures**
+  3. **Chemical & Organic Management** (cite precise standard dosages if applicable, e.g. ml/L, kg/ha)
+  4. **Important Safety & Pollinator Advisory**
 
 At the end of your response, output two sections:
 SOURCES:
-- Source Name (e.g., ICAR / TNAU / Vikaspedia / Department of Agriculture)
+- Source Name (e.g., ICAR / State Agricultural Universities / Vikaspedia)
 FOLLOW_UP_QUESTIONS:
-- Suggested diagnostic question 1 (e.g. growth stage, severity)
-- Suggested diagnostic question 2 (e.g. symptom location)
+- Suggested diagnostic question 1 (e.g. water source or soil texture)
+- Suggested diagnostic question 2 (e.g. target season or crop variety)
 """
 
 class GeminiGenerator:
@@ -229,7 +260,7 @@ class GeminiGenerator:
             "search_query": user_text or "crop disease diagnosis"
         }
 
-    def generate_web_fallback(self, query: str, crop: str = "general", history: list = None, image: Any = None) -> dict:
+    def generate_web_fallback(self, query: str, crop: str = "general", history: list = None, image: Any = None, agro_context: str = None) -> dict:
         """Generates grounded agricultural advisory for queries not present in local vector DB."""
         history_block = ""
         if history:
@@ -251,6 +282,8 @@ class GeminiGenerator:
                 "The farmer uploaded a photo of the plant. Inspect the visual symptoms in the image carefully and integrate your observations into the advisory.\n\n"
             )
 
+        agro_prompt_note = f"\n{agro_context}\n\n" if agro_context else ""
+
         attempts = 0
         total_keys = len(self.api_keys)
         while attempts < total_keys:
@@ -259,7 +292,7 @@ class GeminiGenerator:
                 self._configure_key(key_idx)
                 model = genai.GenerativeModel(model_name=self.model_name)
                 prompt = (
-                    f"{history_block}{image_prompt_note}" +
+                    f"{history_block}{image_prompt_note}{agro_prompt_note}" +
                     WEB_FALLBACK_PROMPT.format(query=query, crop=crop or "General Agriculture")
                 )
                 content_input = [image, prompt] if image else prompt
@@ -328,7 +361,7 @@ class GeminiGenerator:
             "should_auto_ingest": False
         }
 
-    def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None, history: list = None, image: Any = None) -> dict:
+    def generate_rag_answer(self, query: str, context_chunks: list, crop: str = None, history: list = None, image: Any = None, agro_context: str = None) -> dict:
         """
         Given the farmer query and retrieved vector context chunks, generate a grounded answer.
         Handles:
@@ -364,7 +397,7 @@ class GeminiGenerator:
             
             # Situation 1: Genuine Agricultural Query outside local Vector DB -> Live Knowledge Retrieval!
             detected_crop = intent.get("crop") if intent.get("crop") != "general" else (crop or "general")
-            return self.generate_web_fallback(query=query, crop=detected_crop, history=history, image=image)
+            return self.generate_web_fallback(query=query, crop=detected_crop, history=history, image=image, agro_context=agro_context)
 
         # Format conversation history if provided
         history_block = ""
@@ -386,6 +419,8 @@ class GeminiGenerator:
                 "\nPHOTO ATTACHED BY FARMER:\n"
                 "The farmer uploaded a photo of the crop/leaf. Examine the photo carefully, describe the visible lesions, spots, or pest damage you observe, and synthesize your diagnosis using both the image and verified agricultural context.\n\n"
             )
+
+        agro_prompt_note = f"\n{agro_context}\n\n" if agro_context else ""
 
         # Situation 0: High Confidence Local Vector DB Match!
         formatted_contexts = []
@@ -410,7 +445,7 @@ class GeminiGenerator:
 
         combined_context = "\n---\n".join(formatted_contexts)
 
-        prompt = f"""{history_block}{photo_notes}Farmer's Current Question: {query}
+        prompt = f"""{history_block}{photo_notes}{agro_prompt_note}Farmer's Current Question: {query}
 Crop Context: {crop if crop else 'Auto-detected / Multi-crop'}
 
 Verified Context from Agricultural Knowledge Base:

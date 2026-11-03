@@ -11,6 +11,12 @@ from embeddings.embedder import GeminiEmbedder
 from rag.qdrant_service import QdrantService
 from rag.generator import GeminiGenerator
 from sarvam.sarvam_service import SarvamService
+from rag.weather_service import (
+    detect_location,
+    fetch_live_weather,
+    is_crop_selection_or_weather_query,
+    get_regional_agro_climatic_context
+)
 
 def load_image_from_b64(b64_str: Optional[str]) -> Optional[Image.Image]:
     if not b64_str:
@@ -109,6 +115,8 @@ class ChatRequest(BaseModel):
     history: Optional[List[dict]] = None
     image: Optional[str] = None
     image_base64: Optional[str] = None
+    location: Optional[str] = None
+    farmLocation: Optional[str] = None
 
 class ChatResponse(BaseModel):
     answer: str
@@ -271,6 +279,22 @@ def rag_chat(request: ChatRequest):
             if crop_filter:
                 break
 
+    # Step 2.6: Regional Agro-Climatic & Live Weather Intelligence
+    agro_context = None
+    detected_loc = detect_location(
+        text=raw_user_query,
+        history=request.history,
+        profile_location=request.location or request.farmLocation
+    )
+    if detected_loc and is_crop_selection_or_weather_query(raw_user_query):
+        try:
+            weather_info = fetch_live_weather(detected_loc)
+            if weather_info:
+                agro_context = get_regional_agro_climatic_context(weather_info)
+                print(f"[Agro Intelligence] Fetched live weather for '{detected_loc}': {weather_info.get('temperature_c')}C, {weather_info.get('condition')}")
+        except Exception as agro_err:
+            print(f"[Agro Intelligence Warning] {agro_err}")
+
     try:
         # Step 3: Embed Query in English (Contextualize follow-ups and visual findings)
         retrieval_query = query_for_rag
@@ -295,13 +319,14 @@ def rag_chat(request: ChatRequest):
             top_k=request.topK
         )
         
-        # Step 5: Grounded Gemini generation with 3-tier routing, conversation context, and image vision
+        # Step 5: Grounded Gemini generation with 3-tier routing, conversation context, image vision & live agro-weather
         res = generator.generate_rag_answer(
             query=query_for_rag, 
             context_chunks=hits, 
             crop=crop_filter, 
             history=request.history,
-            image=pil_image
+            image=pil_image,
+            agro_context=agro_context
         )
         english_answer = res.get("answer", "")
 
