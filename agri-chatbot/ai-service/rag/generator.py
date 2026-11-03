@@ -101,12 +101,68 @@ Guiding Diagnostic & Advisory Principles:
      * **Soil & Regional Impact on Yield** (how black soil/alluvial soil and local weather influence output)
      * **Actionable Tips to Maximize Harvest Potential**
      * **Key Follow-up Questions to Pinpoint Exact Farm Output**
+
+9. ABSOLUTE FORMATTING RULE — NO LATEX, NO DOLLAR SIGNS, NO \\text{}:
+   - NEVER use LaTeX math notation, dollar signs ($), backslashes, or \\text{} under ANY circumstances.
+   - NEVER write $2.0 \\text{ to } 2.5\\text{ g}$, $800-1000\\text{ g/acre}$, $400\\text{ L}$, or $$24-32$$.
+   - ALWAYS write clean, plain, human-readable numbers, words, and units:
+     * Write '2.0 to 2.5 g per liter of water'
+     * Write 'approx. 800 to 1000 g/acre in 400 L water'
+     * Write '24 to 32 quintals per acre'
+     * Write '28°C'
+   - Farmers need clear, natural language without symbols like $, \\text, or { }.
    
    At the very end of your response, output:
    FOLLOW_UP_QUESTIONS:
    - Question 1 (e.g. asking about specific acreage or variety)
    - Question 2 (e.g. asking about irrigation frequency or split timing)
 """
+
+def clean_latex_to_plain_text(text: str) -> str:
+    """
+    Converts LaTeX math formatting, dollar signs, and \\text{} into clean, human-readable plain text.
+    For example:
+        '$2.0 \\text{ to } 2.5\\text{ g}$ per liter' -> '2.0 to 2.5 g per liter'
+        '($800–1000\\text{ g/acre}$ in $400\\text{ L}$)' -> '(800–1000 g/acre in 400 L)'
+    """
+    if not text:
+        return ""
+    
+    clean = text
+    # 1. Repeatedly unwrap nested \text{...}, \mathrm{...}, \textbf{...}
+    for _ in range(3):
+        clean = re.sub(r"\\(?:text|mathrm|textbf|textit|mathbf)\{([^{}]*)\}", r"\1", clean)
+    
+    # 2. Common math symbols & Greek letters to clean Unicode
+    clean = re.sub(r"\\approx\s*", "~", clean)
+    clean = re.sub(r"\\times\s*", "x", clean)
+    clean = re.sub(r"\\pm\s*", "+/-", clean)
+    clean = re.sub(r"\\(?:le|leq)\s*", "<=", clean)
+    clean = re.sub(r"\\(?:ge|geq)\s*", ">=", clean)
+    clean = re.sub(r"\\frac\{([^{}]*)\}\{([^{}]*)\}", r"\1/\2", clean)
+    clean = re.sub(r"\^\\circ\s*C?", "°C", clean)
+    clean = re.sub(r"\\degree\s*C?", "°C", clean)
+    
+    # 3. Remove math delimiters: $$, $, \(, \), \[, \]
+    clean = re.sub(r"\$\$([^$]*)\$\$", r"\1", clean)
+    clean = re.sub(r"\$([^$]*)\$", r"\1", clean)
+    clean = re.sub(r"\\\((.*?)\\\)", r"\1", clean)
+    clean = re.sub(r"\\\[(.*?)\\\]", r"\1", clean)
+    
+    # 4. Remove standalone $ symbols
+    clean = clean.replace("$", "")
+    
+    # 5. Remove remaining \command or stray backslashes
+    clean = re.sub(r"\\([a-zA-Z]+)", r"\1", clean)
+    clean = clean.replace("\\", "")
+    
+    # 6. Remove any dangling unmatched braces like { g} or { }
+    clean = re.sub(r"\{\s*([^{}]+?)\s*\}", r"\1", clean)
+    clean = clean.replace("{", "").replace("}", "")
+    
+    # 7. Clean up excess whitespace
+    clean = re.sub(r"[ \t]{2,}", " ", clean)
+    return clean.strip()
 
 INTENT_PROMPT = """You are an intent classification system for an agricultural chatbot.
 Classify the following user query into one of two categories:
@@ -140,6 +196,10 @@ Rules:
    - Evaluate fertilizer inputs (e.g. Urea + DAP vs missing Potash / Zinc / Micronutrients) and timing.
    - Detail soil type and regional climate impact.
    - Ask 2-3 focused diagnostic cross-questions regarding acreage, exact variety, and irrigation frequency.
+
+7. ABSOLUTE FORMATTING RULE — NO LATEX, NO DOLLAR SIGNS, NO \\text{}:
+   - NEVER output LaTeX math notation, dollar signs ($), backslashes, or \\text{}.
+   - ALWAYS write clean everyday plain numbers and units (e.g. '2.0 to 2.5 g per liter', '800 to 1000 g/acre', '14 to 18 quintals/acre').
 
 Structure your response cleanly:
 - For Regional Crop Selection:
@@ -194,26 +254,28 @@ class GeminiGenerator:
     @staticmethod
     def _extract_response_text(response) -> str:
         """Safely extracts text from Gemini response, avoiding ValueError if finish_reason != STOP or text quick accessor fails."""
+        text = ""
         try:
             if hasattr(response, "text") and response.text:
-                return response.text.strip()
+                text = response.text.strip()
         except Exception:
             pass
             
-        try:
-            if hasattr(response, "candidates") and response.candidates:
-                candidate = response.candidates[0]
-                if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
-                    parts_text = []
-                    for part in candidate.content.parts:
-                        if hasattr(part, "text") and part.text:
-                            parts_text.append(part.text)
-                    if parts_text:
-                        return "".join(parts_text).strip()
-        except Exception:
-            pass
+        if not text:
+            try:
+                if hasattr(response, "candidates") and response.candidates:
+                    candidate = response.candidates[0]
+                    if hasattr(candidate, "content") and hasattr(candidate.content, "parts"):
+                        parts_text = []
+                        for part in candidate.content.parts:
+                            if hasattr(part, "text") and part.text:
+                                parts_text.append(part.text)
+                        if parts_text:
+                            text = "".join(parts_text).strip()
+            except Exception:
+                pass
             
-        return ""
+        return clean_latex_to_plain_text(text)
 
     def _configure_key(self, key_idx: int):
         if not self.api_keys or key_idx >= len(self.api_keys):
@@ -380,14 +442,15 @@ class GeminiGenerator:
                         "similarity_score": 0.85
                     }]
 
+                clean_ans = clean_latex_to_plain_text(answer_text)
                 return {
-                    "answer": answer_text,
+                    "answer": clean_ans,
                     "crop": crop or "general",
                     "confidence": "Medium",
                     "sources": sources,
-                    "suggested_questions": follow_ups[:3],
+                    "suggested_questions": [clean_latex_to_plain_text(q) for q in follow_ups[:3]],
                     "should_auto_ingest": True,  # Flag for auto-ingestion
-                    "content_to_ingest": answer_text
+                    "content_to_ingest": clean_ans
                 }
             except Exception:
                 attempts += 1
@@ -534,12 +597,13 @@ FOLLOW_UP_QUESTIONS:
                         if q_clean:
                             follow_ups.append(q_clean)
                             
+                clean_ans = clean_latex_to_plain_text(answer_text)
                 return {
-                    "answer": answer_text,
+                    "answer": clean_ans,
                     "crop": crop or (context_chunks[0].get("payload", {}).get("crop")),
                     "confidence": confidence,
                     "sources": sources[:3],
-                    "suggested_questions": follow_ups[:3],
+                    "suggested_questions": [clean_latex_to_plain_text(q) for q in follow_ups[:3]],
                     "should_auto_ingest": False
                 }
             except Exception:

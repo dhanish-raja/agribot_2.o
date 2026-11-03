@@ -9,7 +9,7 @@ from PIL import Image
 
 from embeddings.embedder import GeminiEmbedder
 from rag.qdrant_service import QdrantService
-from rag.generator import GeminiGenerator
+from rag.generator import GeminiGenerator, clean_latex_to_plain_text
 from sarvam.sarvam_service import SarvamService
 from rag.weather_service import (
     detect_location,
@@ -359,11 +359,12 @@ def rag_chat(request: ChatRequest):
             except Exception as ingest_err:
                 print(f"[Auto-Ingest Warning] Could not cache to Qdrant: {ingest_err}")
 
-        # Step 7: Translate response back to farmer's language L
-        final_answer = english_answer
+        # Step 7: Clean any LaTeX artifacts and translate response back to farmer's language L
+        final_answer = clean_latex_to_plain_text(english_answer)
         if detected_lang != "en-IN" and sarvam:
             try:
-                final_answer = sarvam.translate(english_answer, source_language_code="en-IN", target_language_code=detected_lang)
+                final_answer = sarvam.translate(final_answer, source_language_code="en-IN", target_language_code=detected_lang)
+                final_answer = clean_latex_to_plain_text(final_answer)
             except Exception as trans_back_err:
                 print(f"[Translation Back Warning] {trans_back_err}")
 

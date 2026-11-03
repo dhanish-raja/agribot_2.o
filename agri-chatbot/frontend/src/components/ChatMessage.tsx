@@ -23,6 +23,40 @@ interface ChatMessageProps {
   onFeedback: (messageId: string, feedback: "up" | "down") => void;
 }
 
+export const cleanLatexToPlainText = (text: string): string => {
+  if (!text) return "";
+  let clean = text;
+  // Repeatedly unwrap nested \text{...}, \mathrm{...}, \textbf{...}
+  for (let i = 0; i < 3; i++) {
+    clean = clean.replace(/\\(?:text|mathrm|textbf|textit|mathbf)\{([^{}]*)\}/g, "$1");
+  }
+  // Common math symbols
+  clean = clean.replace(/\\approx\s*/g, "~");
+  clean = clean.replace(/\\times\s*/g, "×");
+  clean = clean.replace(/\\pm\s*/g, "±");
+  clean = clean.replace(/\\(?:le|leq)\s*/g, "≤");
+  clean = clean.replace(/\\(?:ge|geq)\s*/g, "≥");
+  clean = clean.replace(/\\frac\{([^{}]*)\}\{([^{}]*)\}/g, "$1/$2");
+  clean = clean.replace(/\^\\circ\s*C?/g, "°C");
+  clean = clean.replace(/\\degree\s*C?/g, "°C");
+  // Remove math delimiters: $$, $, \(, \), \[, \]
+  clean = clean.replace(/\$\$([^$]*)\$\$/g, "$1");
+  clean = clean.replace(/\$([^$]*)\$/g, "$1");
+  clean = clean.replace(/\\\((.*?)\\\)/g, "$1");
+  clean = clean.replace(/\\\[(.*?)\\\]/g, "$1");
+  // Remove standalone $ symbols
+  clean = clean.replace(/\$/g, "");
+  // Remove remaining \command or stray backslashes
+  clean = clean.replace(/\\([a-zA-Z]+)/g, "$1");
+  clean = clean.replace(/\\/g, "");
+  // Remove any dangling unmatched braces like { g} or { }
+  clean = clean.replace(/\{\s*([^{}]+?)\s*\}/g, "$1");
+  clean = clean.replace(/[{}]/g, "");
+  // Clean up excess whitespace
+  clean = clean.replace(/[ \t]{2,}/g, " ");
+  return clean.trim();
+};
+
 export const ChatMessage = ({
   message,
   onSelectSuggestedQuestion,
@@ -37,9 +71,10 @@ export const ChatMessage = ({
   const AI_BASE_URL = import.meta.env.VITE_AI_SERVICE_URL || "https://agribot-2-o.onrender.com";
   const isAssistant = message.sender === "assistant";
 
-  // Copy message text
+  // Copy clean human-readable message text
   const handleCopy = () => {
-    navigator.clipboard.writeText(message.text);
+    const clean = cleanLatexToPlainText(message.text);
+    navigator.clipboard.writeText(clean);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -65,6 +100,8 @@ export const ChatMessage = ({
       return;
     }
 
+    const cleanSpeechText = cleanLatexToPlainText(message.text);
+
     // 2. Fetch Sarvam AI TTS audio from backend
     setIsLoadingAudio(true);
     try {
@@ -72,7 +109,7 @@ export const ChatMessage = ({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          text: message.text,
+          text: cleanSpeechText,
           language_code: message.detectedLanguage || "en-IN",
           speaker: "kavya"
         })
@@ -91,7 +128,7 @@ export const ChatMessage = ({
       setIsLoadingAudio(false);
       // Fallback to browser Web Speech API
       if ("speechSynthesis" in window) {
-        const cleanText = message.text.replace(/[*#_`>-]/g, "").replace(/\n+/g, ". ");
+        const cleanText = cleanSpeechText.replace(/[*#_`>-]/g, "").replace(/\n+/g, ". ");
         const utterance = new SpeechSynthesisUtterance(cleanText);
         utterance.rate = 0.95;
         utterance.onend = () => setIsPlayingAudio(false);
@@ -117,7 +154,8 @@ export const ChatMessage = ({
 
   // Format markdown content
   const renderFormattedContent = (content: string) => {
-    const lines = content.split("\n");
+    const sanitized = cleanLatexToPlainText(content);
+    const lines = sanitized.split("\n");
     return lines.map((line, idx) => {
       const trimmed = line.trim();
       if (!trimmed) return <div key={idx} className="md-spacer" />;
@@ -179,7 +217,8 @@ export const ChatMessage = ({
   };
 
   const inlineMarkdown = (text: string) => {
-    return text
+    const clean = cleanLatexToPlainText(text);
+    return clean
       .replace(/\*\*(.*?)\*\*/g, "<strong>$1</strong>")
       .replace(/\*(.*?)\*/g, "<em>$1</em>")
       .replace(/`([^`]+)`/g, "<code>$1</code>");

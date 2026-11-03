@@ -19,7 +19,7 @@ import {
 } from "./storage";
 import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
-import { ChatMessage } from "./components/ChatMessage";
+import { ChatMessage, cleanLatexToPlainText } from "./components/ChatMessage";
 import { ChatComposer } from "./components/ChatComposer";
 import { WelcomeHero } from "./components/WelcomeHero";
 import { AuthModal } from "./components/AuthModal";
@@ -331,15 +331,17 @@ export default function App() {
         data = await aiRes.json();
       }
 
+      const rawAnswer = data.answer || "No response received.";
+      const rawQuestions = data.suggested_questions || data.suggestedQuestions || [];
       const botMessage: Message = {
         id: `msg_bot_${Date.now()}`,
-        text: data.answer || "No response received.",
+        text: cleanLatexToPlainText(rawAnswer),
         sender: "assistant",
         timestamp: Date.now(),
         crop: data.crop || selectedCrop,
         confidence: data.confidence || "Medium",
         sources: data.sources || [],
-        suggestedQuestions: data.suggested_questions || data.suggestedQuestions || [],
+        suggestedQuestions: rawQuestions.map((q: string) => cleanLatexToPlainText(q)),
         audioBase64: data.audio_base64 || undefined,
         detectedLanguage: data.detected_language || preferredLangCode || "en-IN"
       };
