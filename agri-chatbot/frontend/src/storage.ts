@@ -1,4 +1,5 @@
 import { ChatSession, User } from "./types";
+import { updateRegisteredProfile } from "./auth";
 
 const SESSIONS_KEY = "agribot_chat_sessions_v1";
 const ACTIVE_SESSION_KEY = "agribot_active_session_id_v1";
@@ -93,6 +94,7 @@ export function loadUser(): User | null {
 export function saveUser(user: User): void {
   try {
     localStorage.setItem(USER_KEY, JSON.stringify(user));
+    updateRegisteredProfile(user);
   } catch (err) {
     console.error("Failed to save user profile:", err);
   }

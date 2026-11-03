@@ -466,6 +466,7 @@ export default function App() {
         onClose={() => setIsAuthModalOpen(false)}
         currentUser={user}
         onSaveUser={handleSaveUser}
+        onLogout={handleLogout}
       />
     </div>
   );

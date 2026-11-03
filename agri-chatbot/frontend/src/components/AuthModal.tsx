@@ -1,23 +1,48 @@
 import { useState, type FormEvent } from "react";
-import { X, User, MapPin, Sprout, ShieldCheck, Globe, CheckCircle2, LogOut } from "lucide-react";
+import { 
+  X, 
+  User, 
+  MapPin, 
+  Sprout, 
+  ShieldCheck, 
+  Globe, 
+  CheckCircle2, 
+  LogOut, 
+  KeyRound, 
+  AlertCircle,
+  Eye,
+  EyeOff
+} from "lucide-react";
 import { User as UserType } from "../types";
+import { changeAccountPassword } from "../auth";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
   currentUser: UserType;
   onSaveUser: (user: UserType) => void;
+  onLogout?: () => void;
 }
 
 export const AuthModal = ({
   isOpen,
   onClose,
   currentUser,
-  onSaveUser
+  onSaveUser,
+  onLogout
 }: AuthModalProps) => {
-  const [activeTab, setActiveTab] = useState<"profile" | "login">("profile");
+  const [activeTab, setActiveTab] = useState<"profile" | "account" | "password">("profile");
   const [formData, setFormData] = useState<UserType>({ ...currentUser });
   const [saveSuccess, setSaveSuccess] = useState(false);
+
+  // Change Password State
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [pwdError, setPwdError] = useState<string | null>(null);
+  const [pwdSuccess, setPwdSuccess] = useState<string | null>(null);
+  const [pwdLoading, setPwdLoading] = useState(false);
 
   if (!isOpen) return null;
 
@@ -28,21 +53,50 @@ export const AuthModal = ({
     setTimeout(() => {
       setSaveSuccess(false);
       onClose();
-    }, 1200);
+    }, 1000);
   };
 
-  const handleQuickGuest = () => {
-    const guestUser: UserType = {
-      id: `guest_${Date.now()}`,
-      name: "Guest Farmer",
-      email: "guest.farmer@agribot.in",
-      role: "Farmer",
-      farmLocation: "Karnataka, India",
-      primaryCrop: "all",
-      language: "English"
-    };
-    onSaveUser(guestUser);
+  const handleChangePassword = async (e: FormEvent) => {
+    e.preventDefault();
+    setPwdError(null);
+    setPwdSuccess(null);
+
+    if (!currentPassword) {
+      setPwdError("Please enter your current password.");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setPwdError("New password must be at least 6 characters long.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setPwdError("New passwords do not match.");
+      return;
+    }
+
+    setPwdLoading(true);
+    try {
+      const result = await changeAccountPassword(currentUser.email, currentPassword, newPassword);
+      if (!result.success) {
+        setPwdError(result.error || "Failed to change password.");
+      } else {
+        setPwdSuccess("Password updated successfully!");
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+      }
+    } catch {
+      setPwdError("An error occurred while changing your password.");
+    } finally {
+      setPwdLoading(false);
+    }
+  };
+
+  const handleLogoutAction = () => {
     onClose();
+    if (onLogout) {
+      onLogout();
+    }
   };
 
   return (
@@ -73,15 +127,21 @@ export const AuthModal = ({
             Farmer Details
           </button>
           <button 
-            className={`modal-tab ${activeTab === "login" ? "active" : ""}`}
-            onClick={() => setActiveTab("login")}
+            className={`modal-tab ${activeTab === "account" ? "active" : ""}`}
+            onClick={() => setActiveTab("account")}
           >
-            Account & Sign In
+            Account Status
+          </button>
+          <button 
+            className={`modal-tab ${activeTab === "password" ? "active" : ""}`}
+            onClick={() => setActiveTab("password")}
+          >
+            Change Password
           </button>
         </div>
 
-        {/* Modal Body */}
-        {activeTab === "profile" ? (
+        {/* Tab 1: Farmer Details Form */}
+        {activeTab === "profile" && (
           <form onSubmit={handleSubmit} className="modal-form">
             <div className="form-grid">
               <div className="form-group">
@@ -99,13 +159,13 @@ export const AuthModal = ({
               </div>
 
               <div className="form-group">
-                <label>Email Address</label>
+                <label>Email Address (Account Identifier)</label>
                 <input
                   type="email"
-                  required
+                  disabled
                   value={formData.email}
-                  onChange={e => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="ramesh@agrofarm.in"
+                  title="Email cannot be changed once registered"
+                  style={{ opacity: 0.75, cursor: "not-allowed" }}
                 />
               </div>
 
@@ -154,7 +214,7 @@ export const AuthModal = ({
               </div>
 
               <div className="form-group">
-                <label>Preferred Language</label>
+                <label>Preferred Advisory Language</label>
                 <div className="input-with-icon">
                   <Globe size={16} />
                   <select
@@ -173,8 +233,8 @@ export const AuthModal = ({
             </div>
 
             <div className="modal-actions">
-              <button type="button" className="btn-secondary" onClick={handleQuickGuest}>
-                Continue as Guest
+              <button type="button" className="btn-secondary" onClick={onClose}>
+                Cancel
               </button>
               <button type="submit" className="btn-primary" disabled={saveSuccess}>
                 {saveSuccess ? (
@@ -182,12 +242,15 @@ export const AuthModal = ({
                     <CheckCircle2 size={16} /> Saved Successfully
                   </>
                 ) : (
-                  "Save Profile"
+                  "Save Changes"
                 )}
               </button>
             </div>
           </form>
-        ) : (
+        )}
+
+        {/* Tab 2: Account Status & Logout */}
+        {activeTab === "account" && (
           <div className="account-tab-content">
             <div className="auth-account-badge">
               <div className="auth-avatar-large">
@@ -196,7 +259,7 @@ export const AuthModal = ({
               <h4>{currentUser.name}</h4>
               <p>{currentUser.email}</p>
               <span className="auth-status-pill">
-                <ShieldCheck size={14} /> Active Session Verified
+                <ShieldCheck size={14} /> Registered Enterprise Session Active
               </span>
             </div>
 
@@ -210,6 +273,10 @@ export const AuthModal = ({
                 <strong>{currentUser.farmLocation}</strong>
               </div>
               <div className="detail-row">
+                <span>Crop Focus:</span>
+                <strong>{currentUser.primaryCrop ? currentUser.primaryCrop.toUpperCase() : "All Crops"}</strong>
+              </div>
+              <div className="detail-row">
                 <span>Language:</span>
                 <strong>{currentUser.language}</strong>
               </div>
@@ -219,17 +286,91 @@ export const AuthModal = ({
               <button 
                 type="button" 
                 className="btn-danger" 
-                onClick={() => {
-                  handleQuickGuest();
-                }}
+                onClick={handleLogoutAction}
               >
-                <LogOut size={16} /> Switch to Guest Account
+                <LogOut size={16} /> Sign Out of Account
               </button>
               <button type="button" className="btn-primary" onClick={onClose}>
                 Done
               </button>
             </div>
           </div>
+        )}
+
+        {/* Tab 3: Security & Change Password */}
+        {activeTab === "password" && (
+          <form onSubmit={handleChangePassword} className="modal-form">
+            {pwdError && (
+              <div className="modal-error-banner">
+                <AlertCircle size={16} />
+                <span>{pwdError}</span>
+              </div>
+            )}
+            {pwdSuccess && (
+              <div className="modal-success-banner">
+                <CheckCircle2 size={16} />
+                <span>{pwdSuccess}</span>
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label>Current Password</label>
+              <div className="input-with-icon">
+                <KeyRound size={16} />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Enter current password"
+                  value={currentPassword}
+                  onChange={e => { setCurrentPassword(e.target.value); setPwdError(null); }}
+                />
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label>New Password (Min 6 characters)</label>
+              <div className="input-with-icon">
+                <KeyRound size={16} />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Enter new password"
+                  value={newPassword}
+                  onChange={e => { setNewPassword(e.target.value); setPwdError(null); }}
+                />
+                <button
+                  type="button"
+                  className="eye-inline-btn"
+                  onClick={() => setShowPassword(!showPassword)}
+                >
+                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                </button>
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: "14px" }}>
+              <label>Confirm New Password</label>
+              <div className="input-with-icon">
+                <KeyRound size={16} />
+                <input
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="Re-enter new password"
+                  value={confirmPassword}
+                  onChange={e => { setConfirmPassword(e.target.value); setPwdError(null); }}
+                />
+              </div>
+            </div>
+
+            <div className="modal-actions">
+              <button type="button" className="btn-secondary" onClick={onClose}>
+                Close
+              </button>
+              <button type="submit" className="btn-primary" disabled={pwdLoading}>
+                {pwdLoading ? "Updating..." : "Update Password"}
+              </button>
+            </div>
+          </form>
         )}
       </div>
     </div>
